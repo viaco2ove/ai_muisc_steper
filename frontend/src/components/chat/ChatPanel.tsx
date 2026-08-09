@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { useAudioRecorder } from '../../hooks/useAudioRecorder'
 import { uploadAudio } from '../../services/api'
 
 export default function ChatPanel() {
   const { chat, audioPath, setAudioPath, currentProject } = useProjectStore()
   const { sendChat } = useWebSocket()
+  const { recording, audioBlob, start, stop, reset } = useAudioRecorder()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -13,6 +15,20 @@ export default function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chat])
+
+  // 录音结束后自动上传
+  useEffect(() => {
+    if (audioBlob) {
+      const file = new File([audioBlob], 'recording.webm', { type: 'audio/webm' })
+      uploadAudio(file)
+        .then((r) => {
+          setAudioPath(r.audio_path)
+          setInput((p) => p + ' [已录音上传]')
+        })
+        .catch(console.error)
+      reset()
+    }
+  }, [audioBlob])
 
   const handleSend = () => {
     if (!input.trim()) return
@@ -38,13 +54,16 @@ export default function ChatPanel() {
     } catch (err) {
       console.error('Upload failed:', err)
     }
-    // reset input
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleRecord = () => {
-    // Placeholder: 录音功能待实现
-    console.log('Record clicked (placeholder)')
+    if (recording) {
+      stop()
+    } else {
+      reset()
+      start()
+    }
   }
 
   return (
@@ -53,9 +72,13 @@ export default function ChatPanel() {
       <div className="flex gap-2 p-3 border-b bg-white">
         <button
           onClick={handleRecord}
-          className="px-3 py-1.5 bg-red-500 text-white rounded-md text-sm hover:bg-red-600 transition"
+          className={`px-3 py-1.5 rounded-md text-sm transition ${
+            recording
+              ? 'bg-red-600 text-white animate-pulse'
+              : 'bg-red-500 text-white hover:bg-red-600'
+          }`}
         >
-          录音
+          {recording ? '● 停止' : '录音'}
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}

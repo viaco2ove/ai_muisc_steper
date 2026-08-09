@@ -1,10 +1,7 @@
-"""main.py - FastAPI 入口 + WebSocket 对话 + 静态托管前端"""
+"""main.py - FastAPI 入口 + WebSocket 对话 + API路由"""
 import json
-import asyncio
-from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from .config import config
 from .api.router import router as api_router
@@ -13,7 +10,6 @@ from .core.project_manager import ProjectManager
 from .core.llm_agent import LLMAgent
 
 app = FastAPI(title="AI音乐工程工作台", version="0.1.0")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.cors_origins + ["*"],
@@ -68,7 +64,6 @@ async def ws_chat(ws: WebSocket):
 
             await ws.send_json({"type": "text", "msg": f"🧑 {user_msg}",
                                 "stream": False, "role": "user_echo"})
-            # 在线程池跑 agent（含 subprocess）
             await _agent.handle(user_msg, project, history, audio_path, ws_send)
     except WebSocketDisconnect:
         pass
@@ -77,9 +72,3 @@ async def ws_chat(ws: WebSocket):
             await ws.send_json({"type": "error", "msg": f"服务异常: {e}"})
         except Exception:
             pass
-
-
-# 静态托管前端 dist（构建后）
-_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if _dist.exists():
-    app.mount("/", StaticFiles(directory=str(_dist), html=True), name="frontend")

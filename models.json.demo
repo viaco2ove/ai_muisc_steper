@@ -1,0 +1,33 @@
+{
+  "models": [
+  {
+    "id": "orcg",
+    "name": "orcg",
+    "model": "deepseek-v4-pro",
+    "vendor": "Custom",
+    "url": "http://127.0.0.1:3428/v1/chat/completions",
+    "apiKey": "orcg",
+    "supportsToolCall": true,
+    "supportsImages": true,
+    "supportsReasoning": true,
+    "useCustomProtocol": false,
+    "maxInputTokens": 131072,
+    "maxOutputTokens": 8192
+  },
+    {
+      "id": "deepseek",
+      "name": "deepseek",
+      "vendor": "Custom",
+      "url": "https://api.deepseek.com/v1/chat/completions",
+      "apiKey": "xxx",
+      "supportsToolCall": true,
+      "supportsImages": true,
+      "supportsReasoning": true,
+      "useCustomProtocol": false,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 8192
+    }
+  ],
+  "skill_ai": {"model": "orcg"},
+  "melody_master": {"model": "deepseek"}
+}

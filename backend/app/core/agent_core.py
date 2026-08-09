@@ -1,7 +1,9 @@
 """agent_core.py - 简化版 WorkBuddy：扫描/校验/执行 .workbuddy 技能
 
+参数传递: 通过 Python -c import 脚本模块，绕过 Windows 命令行 UTF-8 编码问题。
 零 AI 逻辑，只接收结构化参数，subprocess 调技能脚本，捕获日志，返回产物。
 """
+
 import os
 import re
 import sys
@@ -106,7 +108,6 @@ class AgentCore:
 
         entry = skill.get("entry_script")
         if not entry:
-            # 兜底：取 scripts 第一个 .py
             if skill.get("scripts"):
                 entry = "scripts/" + skill["scripts"][0]
             else:
@@ -120,18 +121,72 @@ class AgentCore:
             result["error"] = f"入口脚本不存在: {script_path}"
             return result
 
-        cmd = [config.python_exe, str(script_path)] + self._build_args(args, skill.get("params", {}))
-        result["logs"].append("$ " + " ".join(cmd))
-
-        # 记录执行前 workspace 工程目录文件快照（用于收集新增产物）
+        # project_name 从 args 里提取
         project_name = args.get("project") or args.get("--project") or args.get("title") or args.get("--title")
         snap_before = self._snapshot_project(project_name) if project_name else set()
 
+        # 写临时 JSON 参数文件 + wrapper 脚本，绕过 Windows 命令行 UTF-8 编码问题
+        import tempfile
+        args_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json',
+                                                encoding='utf-8', delete=False, dir='.')
+        json.dump(args, args_file, ensure_ascii=False)
+        args_file.close()
+
+        wrapper = tempfile.NamedTemporaryFile(mode='w', suffix='_wrapper.py',
+                                            encoding='utf-8', delete=False, dir='.')
+        wrapper.write(f"""
+import sys, json, importlib.util, os, inspect
+sys.path.insert(0, os.getcwd())
+
+# 从 JSON 文件加载 args，避免命令行编码问题
+with open(r'{args_file.name}', encoding='utf-8') as f:
+    kw = json.load(f)
+
+# 重建 sys.argv，让脚本内部的 argparse.parse_args() 能读到正确参数
+sys.argv = ['{script_path.name}']
+for k, v in kw.items():
+    if v is None or v is False:
+        continue
+    sys.argv.append('--' + k.lstrip('-'))
+    if v is not True:
+        sys.argv.append(str(v))
+
+# 加载脚本模块
+script = r'{script_path.as_posix()}'
+spec = importlib.util.spec_from_file_location('__skill__', script)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+# 调用 main：检查签名决定传参方式
+if hasattr(mod, 'main'):
+    try:
+        sig = inspect.signature(mod.main)
+        params = list(sig.parameters.keys())
+        if params:
+            # main(kwargs) 形式
+            mod.main(kw)
+        else:
+            # main() 无参数形式（内部用 argparse）
+            mod.main()
+    except SystemExit as e:
+        sys.exit(0 if e.code is None else e.code)
+    except Exception:
+        pass
+""")
+        wrapper.close()
+        cmd = [config.python_exe, "-X", "utf8", wrapper.name]
+        result["logs"].append(f"$ {script_path.name} [args via json-file]")
+        result["_wrapper"] = wrapper.name
+        result["_args_file"] = args_file.name
+
         try:
+            env = dict(os.environ)
+            env["PYTHONIOENCODING"] = "utf-8"
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=str(self.wb_dir.parent), text=True,
                 encoding="utf-8", errors="replace", bufsize=1,
+                env=env,
             )
             try:
                 for line in iter(proc.stdout.readline, ""):
@@ -149,11 +204,9 @@ class AgentCore:
             proc.kill()
             result["status"] = "error"
             result["error"] = f"技能 {tool} 执行超时({timeout}s)"
-            return result
         except FileNotFoundError as e:
             result["status"] = "error"
             result["error"] = f"执行失败(解释器或脚本找不到): {e}"
-            return result
 
         if rc != 0:
             result["status"] = "error"
@@ -161,27 +214,17 @@ class AgentCore:
         else:
             result["status"] = "ok"
 
-        # 收集产物
         result["files"] = self._collect_outputs(project_name, snap_before)
-        return result
 
-    # ---------------------------------------------------------------- 辅助
-    def _build_args(self, args: dict, params_spec: dict) -> list:
-        """dict 参数 -> CLI flags。
-        args 的 key 可能是 'project' 或 '--project'，统一处理。
-        布尔 True -> 仅加 flag；False/None -> 跳过。
-        """
-        out = []
-        for k, v in args.items():
-            if v is None or v is False:
-                continue
-            flag = k if k.startswith("-") else ("--" + k)
-            if v is True:
-                out.append(flag)
-            else:
-                out.append(flag)
-                out.append(str(v))
-        return out
+        # 清理 temp 文件
+        for key in ("_wrapper", "_args_file"):
+            f = result.pop(key, None)
+            if f:
+                try:
+                    Path(f).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        return result
 
     def _snapshot_project(self, project_name: str) -> set:
         pdir = config.project_dir / project_name

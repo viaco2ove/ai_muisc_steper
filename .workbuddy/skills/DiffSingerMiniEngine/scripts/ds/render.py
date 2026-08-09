@@ -122,11 +122,17 @@ def write_audio(audio, out, sr_write, sr_voc):
     try:
         sf.write(tmp, audio, sr_write, subtype="PCM_16")
         if os.path.exists(out):
-            os.remove(out)
+            try:
+                os.remove(out)  # 沙箱安全删除(回收站)不可用时跳过, shutil.copy 会覆盖
+            except OSError:
+                pass
         shutil.copy(tmp, out)
     finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
     if peak > 0.891:
         d, s = sf.read(out)
         sf.write(out, d * (0.891 / peak), s, subtype="PCM_16")
