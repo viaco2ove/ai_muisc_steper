@@ -1,6 +1,6 @@
 import type { ProjectListItem } from '../store/projectStore'
 
-const BASE_URL = 'http://127.0.0.1:8000'
+const BASE_URL = 'http://127.0.0.1:8120'
 
 function encodeName(name: string): string {
   return encodeURIComponent(name)

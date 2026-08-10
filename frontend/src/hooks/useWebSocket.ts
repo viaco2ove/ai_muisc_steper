@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useProjectStore } from '../store/projectStore'
 import { getProject } from '../services/api'
 
-const WS_URL = 'ws://127.0.0.1:8000/ws/chat'
+const WS_URL = 'ws://127.0.0.1:8120/ws/chat'
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
