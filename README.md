@@ -1,163 +1,118 @@
-# AI 音乐助手
+# AI 音乐工程工作台
 
-基于 AI 的轻量化音乐创作辅助工具。通过哼唱或构思，快速生成和弦、旋律、歌词，并导出为多轨道 MIDI 工程。
+左侧 AI 对话 + 右侧工程工作台。哼唱 → AI 全流程编排技能 → 生成带和弦/歌词/分轨/MIDI/混音的完整歌曲工程。
 
-宿主：WorkBuddy/agent cli/自研desktop app agent(待开发)/自研 agent web(待开发)
----
+## 快速启动
 
-## 核心定位
+### 前置要求
 
-> **帮助音乐人更快验证想法、建立音乐工程。帮助普通人快速实现自己的音乐想法。**
+- Python 3.12+
+- Node.js 18+
+- DeepSeek API Key (或配置 `models.json` 使用其他 LLM)
 
-三条跑道：
-1. **辅助音乐人** — 快速验证灵感，建立工程框架
-2. **普通人** — 快速实现自己的音乐想法
-3. **探索边界** — 做人类做不了的音乐
-
----
-
-## 核心链路
-
-```
-灵感（哼唱/构思）
-    ↓
-AI 分析 → 生成和弦/旋律/歌词
-    ↓
-工程 MD（多轨道、歌词、和弦）
-    ↓
-持续优化和编辑 → 生成成品
-```
-
----
-
-## 目录结构
-
-```
-ai_muice_steper/
-├── README.md                 # 本文件
-├── .env                      # 环境变量（API 密钥等）  [gitignore]
-├── .venv                     # Python 虚拟环境  [gitignore]
-├── md/                       # 设计文档与规范
-│   ├── currdesign/           # 当前设计
-│   │   ├── 总览.md           # 项目总览
-│   │   ├── 哼唱一小段的音乐助手设计.md
-│   │   ├── 技术栈.md         # 技术架构设计
-│   │   ├── 工程MD格式规范.md # 工程文件格式规范
-│   │   └── skill.list.md     # 技能列表
-│   ├── kb_repo/              # 知识库
-│   ├── workflow/             # 工作流程文档
-│   └── install/              # 安装指南
-│
-├── workspace/                # 工作空间（工程文件）  [gitignore]
-│   ├── project/              # 歌曲工程
-│   │   └── {歌名}/           # 单个歌曲工程
-│   │       ├── project.md    # 工程总览
-│   │       ├── song_engineer/ # AI 工程聚合
-│   │       │   ├── track/    # 轨道设计文档
-│   │       │   ├── ai-track/ # AI 生成轨道
-│   │       │   └── song_engineer.md
-│   │       └── *.mp3         # 原始音频
-│   ├── audio_output/         # 音频输出
-│   ├── ai_chords/            # AI 和弦分析
-│   ├── muse_ai/              # Muse AI 生成
-│   └── minimax_music_v3/     # MiniMax 音乐生成
-│
-├── .workbuddy/               # WorkBuddy 技能配置
-└── .cache/                   # 缓存目录 [gitignore]
-```
-
----
-
-## 歌曲工程结构
-
-每个歌曲工程（以「走在」为例）：
-
-```
-workspace/project/走在/
-├── project.md                # 工程总览
-├── 走在_no-watermark.mp3     # 原始音频
-└── song_engineer/           # 工程引擎
-    ├── song_engineer.md      # 诊断与优化中枢
-    ├── song_engineer.json   # 结构化数据
-    ├── track/               # 轨道设计文档
-    │   ├── 01_和弦.md
-    │   ├── 02_主唱.md
-    │   └── 03_吉他.md
-    ├── ai-track/             # AI 生成轨道
-    │   ├── 02_主唱_v4.mid
-    │   ├── 02_主唱_v4_lyrics.txt  # OpenUTAU 歌词
-    │   ├── 03_吉他.mid
-    │   └── ...
-    └── res/                  # 资源文件
-```
-
----
-
-## 快速开始
-
-### 1. 环境准备
+### 1. 后端 (API + WebSocket)
 
 ```bash
 # 安装依赖
-pip install mido numpy
+pip install -r backend/requirements.txt
 
-# MiniMax API（音乐生成）
-# 在 .env 中设置 MINIMAX_API_KEY
+# 启动后端
+cd backend && python -m uvicorn app.main:app --reload --port 8000
+# 或用脚本
+backend/run.bat   # Windows
+bash backend/run.sh  # Linux/Mac
 ```
 
-### 2. 创建新工程
+访问: http://127.0.0.1:8000/api/health
+
+### 2. 前端 (React 开发服务器)
 
 ```bash
-# 在 workspace/project/ 下创建新文件夹
-mkdir workspace/project/我的新歌
+cd frontend
+npm install
+npm run dev
 ```
 
-### 3. 核心工作流
+访问: http://127.0.0.1:5173 (API 代理到后端 8000)
 
-| 步骤 | 操作 | 产出 |
+### 3. 生产构建
+
+```bash
+# 前端构建
+cd frontend && npm run build
+
+# Docker 一键部署
+docker-compose up --build
+```
+
+访问: http://127.0.0.1:3000 (frontend+nginx) 或 http://127.0.0.1:8000 (API)
+
+## LLM 配置
+
+编辑 `models.json`:
+
+```json
+{
+  "skill_ai": {"model": "deepseek"},
+  "models": [
+    {
+      "id": "deepseek",
+      "name": "deepseek",
+      "model": "deepseek-v4-flash",
+      "url": "https://api.deepseek.com/v1/chat/completions",
+      "apiKey": "sk-your-key"
+    }
+  ]
+}
+```
+
+支持: DeepSeek / 通义 / 豆包 / 本地 OpenAI 兼容 API。
+
+## API 端点
+
+| 方法 | 路径 | 说明 |
 |------|------|------|
-| 1 | 上传哼唱音频 | 原始音频文件 |
-| 2 | AI 旋律分析 | 旋律 MD/JSON |
-| 3 | AI 和弦生成 | 和弦 MD |
-| 4 | 歌词创作 | 歌词 MD |
-| 5 | 多轨编曲 | track/*.md |
-| 6 | AI 生成 MIDI | ai-track/*.mid |
-| 7 | 导出 OpenUTAU | *.txt 歌词 |
+| GET | `/api/health` | 健康检查 |
+| GET | `/api/skills` | 技能列表 |
+| GET | `/api/projects` | 工程列表 |
+| GET | `/api/project/{name}` | 工程详情 |
+| PUT | `/api/project/{name}/track/{id}` | 保存轨道 |
+| POST | `/api/audio/upload` | 上传音频 |
+| POST | `/api/skill/{tool}` | 执行技能 |
+| WS | `/ws/chat` | AI 对话 |
+| GET | `/api/export/{name}/{type}` | 导出文件 |
 
-### 4. OpenUTAU 导入
+## 技能
 
-1. 用生成的 MIDI 文件在 OpenUTAU 新建音轨
-2. 导入 `.txt` 歌词文件（每行对应一个音符）
-3. 选择音色库（使用 `MuseScore_General.sf2`）
-4. 渲染人声
+22 个本地音乐技能 (`.workbuddy/skills/`):
 
----
+- `audio_chord_recognizer` - 哼唱识别和弦/旋律
+- `ai_chords_master` - 生成和弦进行
+- `melody_master` - 旋律优化
+- `muse-lyrics-gen` - 生成押韵歌词
+- `musescore-cooperate` - 生成 MuseScore 乐谱
+- `remix-master` - 多轨混音
+- `DiffSingerMiniEngine` - 歌声合成
+- `song_engineer` - 工程聚合诊断
+- `minimax_cover_preprocess` - MiniMax 翻唱
+- ... 等
 
-## 技能列表
+## 项目结构
 
-| 技能 | 功能 |
-|------|------|
-| `minimax-music-api` | MiniMax API 音乐生成 |
-| `demucs` | 音频轨道分离 |
-| `openutau_lyrics` | OpenUTAU 音素歌词生成 |
-| `audio_chord_recognizer` | 音频和弦识别 |
-| `muse-lyrics-gen` | Muse AI 歌词生成 |
+```
+backend/          # FastAPI 后端
+  app/
+    api/        # REST 路由
+    core/        # Agent Core / LLM / 工程管理
+    schemas/     # Pydantic 模型
+frontend/        # React + Vite + Tailwind
+workspace/project/ # 歌曲工程目录
+.workbuddy/skills/ # 音乐技能
+```
 
-详细见 [md/currdesign/skill.list.md](md/currdesign/skill.list.md)
+## 技术栈
 
----
-
-## 工程 MD 格式规范
-
-工程 MD 是项目的**唯一真相源**，聚合和弦、歌词、多轨道、旋律、附件等信息。
-
-格式规范见 [md/currdesign/工程MD格式规范.md](md/currdesign/工程MD格式规范.md)
-
----
-
-## 相关文档
-
-- [项目总览](md/currdesign/总览.md)
-- [哼唱设计](md/currdesign/哼唱一小段的音乐助手设计.md)
-- [技术栈](md/currdesign/技术栈.md)
-- [工程MD格式规范](md/currdesign/工程MD格式规范.md)
+- **前端**: React 18 + TypeScript + Vite + Tailwind + Zustand
+- **后端**: Python + FastAPI + WebSocket
+- **AI 层**: DeepSeek / 通义 / 豆包 (OpenAI 兼容协议)
+- **存储**: 本地文件 (workspace) + SQLite (可选会话)
