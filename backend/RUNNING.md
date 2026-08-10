@@ -5,7 +5,11 @@
 ```bash
 # 终端1 - 后端
 cd backend
-.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# 指定端口
+# .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# 使用 .env 配置
+.venv/Scripts/python.exe  run.py
+
 
 # 终端2 - 前端
 cd frontend
