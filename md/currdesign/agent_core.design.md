@@ -1,6 +1,7 @@
-# AI 模型对接完整结构设计
+# AI 模型对接完整结构设计：c
 # 聚焦：AI 模型对接完整结构（只三件事：发什么、收什么、怎么处理）
-
+详细设计在 
+[agent_core](agent_core)
 ## 前置边界
 运行载体：Electron 前端 + Python 后端；
 底层执行：后端内置**简化版 WorkBuddy 也就是 “agent core” ai agent核心**（只负责调用`.workbuddy`音乐技能）；
@@ -25,6 +26,7 @@ https://github.com/manoskary/weavemuse
 https://github.com/MoonshotAI/kimi-cli
 https://github.com/OpenHands/OpenHands
 https://github.com/continuedev/continue
+https://github.com/anomalyco/opencode
 
 
 ## 完整数据流主干

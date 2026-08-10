@@ -12,6 +12,16 @@ export async function listProjects(): Promise<ProjectListItem[]> {
   return res.json()
 }
 
+export async function createProject(name: string, style?: string, bpm?: number, key?: string): Promise<any> {
+  const res = await fetch(`${BASE_URL}/api/project/new`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, style, bpm, key }),
+  })
+  if (!res.ok) throw new Error(`createProject failed: ${res.status}`)
+  return res.json()
+}
+
 export async function getProject(name: string): Promise<any> {
   const res = await fetch(`${BASE_URL}/api/project/${encodeName(name)}`)
   if (!res.ok) throw new Error(`getProject failed: ${res.status}`)

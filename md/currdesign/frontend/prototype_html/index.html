@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 音乐创作工作台 · 高保真原型</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --panel-2:#fafbfc; --panel-3:#f1f3f5;
+    --border:#e6e8ec; --border-strong:#d4d8de;
+    --txt:#1f2330; --txt-2:#5b6472; --txt-3:#8b93a1;
+    --primary:#6d5efc; --primary-soft:#efecff; --primary-2:#8b7dff;
+    --teal:#10b8a6; --teal-soft:#e3f8f4;
+    --amber:#f59e0b; --amber-soft:#fef3e0;
+    --red:#ef4444; --red-soft:#fdeaea;
+    --green:#16a34a; --green-soft:#e6f7ec;
+    --blue:#3b82f6; --blue-soft:#e8f1ff;
+    --radius:12px; --radius-sm:8px; --radius-lg:16px;
+    --shadow-sm:0 1px 2px rgba(20,24,40,.06);
+    --shadow:0 4px 16px rgba(20,24,40,.08);
+    --shadow-lg:0 12px 40px rgba(20,24,40,.14);
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+    --sans:-apple-system,'PingFang SC','Microsoft YaHei',Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5;overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#d3d7df;border-radius:6px;border:2px solid var(--panel)}
+  ::-webkit-scrollbar-thumb:hover{background:#bcc1cc}
+
+  /* ===== App shell ===== */
+  .app{display:flex;flex-direction:column;height:100vh}
+  .topbar{height:54px;flex:0 0 54px;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;padding:0 16px;gap:14px;z-index:20;box-shadow:var(--shadow-sm)}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;letter-spacing:.2px}
+  .logo .mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--teal));
+    display:grid;place-items:center;color:#fff;font-size:15px;box-shadow:0 2px 8px rgba(109,94,252,.4)}
+  .topbar .sep{width:1px;height:24px;background:var(--border)}
+  .proj-switch{position:relative}
+  .proj-btn{display:flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--border-strong);
+    border-radius:var(--radius-sm);background:var(--panel-2);font-weight:600;font-size:13px}
+  .proj-btn:hover{border-color:var(--primary-2);color:var(--primary)}
+  .proj-btn .cr{font-size:11px;color:var(--txt-3);font-weight:500}
+  .proj-menu{position:absolute;top:42px;left:0;width:220px;background:var(--panel);border:1px solid var(--border);
+    border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:6px;display:none;z-index:40}
+  .proj-menu.open{display:block}
+  .proj-menu .item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--radius-sm);font-size:13px}
+  .proj-menu .item:hover{background:var(--panel-3)}
+  .proj-menu .item .ic{width:22px;height:22px;border-radius:6px;background:var(--primary-soft);color:var(--primary);
+    display:grid;place-items:center;font-size:12px}
+  .proj-menu .item.new .ic{background:var(--panel-3);color:var(--txt-2)}
+  .topbar .spacer{flex:1}
+  .status-pill{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:20px;background:var(--green-soft);
+    color:var(--green);font-size:12px;font-weight:600}
+  .status-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+  .status-pill.off{background:var(--red-soft);color:var(--red)}
+  .status-pill.off .dot{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.18)}
+  .model-sel{display:flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid var(--border);border-radius:20px;
+    font-size:12px;color:var(--txt-2);background:var(--panel-2)}
+  .model-sel b{color:var(--txt);font-weight:600}
+  .icon-btn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--txt-2);
+    border:1px solid var(--border);background:var(--panel-2);font-size:16px}
+  .icon-btn:hover{color:var(--primary);border-color:var(--primary-2)}
+
+  .main{flex:1;display:flex;min-height:0}
+  /* left + right split */
+  .pane-left{width:42%;min-width:380px;max-width:620px;display:flex;flex-direction:column;background:var(--panel);
+    border-right:1px solid var(--border)}
+  .pane-right{flex:1;display:flex;flex-direction:column;background:var(--bg);min-width:0}
+
+  /* ===== Chat panel (left) ===== */
+  .chat-head{height:46px;flex:0 0 46px;display:flex;align-items:center;gap:10px;padding:0 14px;
+    border-bottom:1px solid var(--border);background:var(--panel)}
+  .chat-head .title{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .chat-head .title .badge{font-size:10px;font-weight:700;color:var(--primary);background:var(--primary-soft);
+    padding:2px 7px;border-radius:6px}
+  .chat-head .spacer{flex:1}
+  .chat-head .mini{font-size:12px;color:var(--txt-3);display:flex;align-items:center;gap:5px}
+
+  .chat-body{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:14px}
+  .msg{display:flex;gap:10px;max-width:100%}
+  .msg .av{width:30px;height:30px;border-radius:9px;flex:0 0 30px;display:grid;place-items:center;font-size:14px;font-weight:700}
+  .msg.user .av{background:var(--primary);color:#fff}
+  .msg.ai .av{background:linear-gradient(135deg,var(--primary),var(--teal));color:#fff}
+  .bubble{flex:1;min-width:0}
+  .bubble .who{font-size:11px;color:var(--txt-3);margin-bottom:3px;font-weight:600}
+  .bubble .content{background:var(--panel-2);border:1px solid var(--border);border-radius:4px 12px 12px 12px;
+    padding:10px 13px;font-size:13.5px;color:var(--txt)}
+  .msg.user .bubble .content{background:var(--primary-soft);border-color:#ddd6ff;border-radius:12px 4px 12px 12px}
+  .bubble .content p+p{margin-top:8px}
+
+  /* reasoning/thinking block */
+  .reasoning{border:1px dashed var(--border-strong);border-radius:10px;background:var(--panel-3);overflow:hidden}
+  .reasoning .rh{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;font-size:12.5px;color:var(--txt-2)}
+  .reasoning .rh .spin{width:13px;height:13px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;
+    animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .reasoning .rh .chev{margin-left:auto;transition:transform .2s;color:var(--txt-3)}
+  .reasoning.collapsed .rh .chev{transform:rotate(-90deg)}
+  .reasoning .rb{padding:0 12px 12px;font-family:var(--mono);font-size:11.5px;color:var(--txt-2);line-height:1.7;
+    white-space:pre-wrap;display:block}
+  .reasoning.collapsed .rb{display:none}
+
+  /* tool call card */
+  .toolcard{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--panel);box-shadow:var(--shadow-sm)}
+  .toolcard.running{border-color:#cfc6ff;box-shadow:0 0 0 3px rgba(109,94,252,.1)}
+  .toolcard .th{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;user-select:none}
+  .toolcard .th .ticon{width:30px;height:30px;border-radius:8px;background:var(--teal-soft);color:var(--teal);
+    display:grid;place-items:center;font-size:15px;flex:0 0 30px}
+  .toolcard .th .tname{font-weight:700;font-size:13px}
+  .toolcard .th .tsub{font-size:11.5px;color:var(--txt-3)}
+  .toolcard .th .state{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .chip{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px}
+  .chip.run{background:var(--primary-soft);color:var(--primary)}
+  .chip.ok{background:var(--green-soft);color:var(--green)}
+  .chip.fail{background:var(--red-soft);color:var(--red)}
+  .chip.t{background:var(--panel-3);color:var(--txt-2)}
+  .toolcard .th .chev{color:var(--txt-3);transition:transform .2s}
+  .toolcard.collapsed .th .chev{transform:rotate(-90deg)}
+  .toolcard .body{display:block;border-top:1px solid var(--border)}
+  .toolcard.collapsed .body{display:none}
+  .toolcard .sect{padding:10px 12px;border-bottom:1px solid var(--border)}
+  .toolcard .sect:last-child{border-bottom:none}
+  .toolcard .sl{font-size:10.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+  .args{font-family:var(--mono);font-size:11.5px;background:var(--panel-3);border-radius:8px;padding:9px 11px;color:var(--txt-2);
+    white-space:pre-wrap;line-height:1.6;overflow-x:auto}
+  .args .k{color:var(--primary)}
+  .args .v{color:var(--teal)}
+  .term{font-family:var(--mono);font-size:11.5px;background:#1d2230;color:#cdd3e0;border-radius:8px;padding:10px 12px;
+    max-height:160px;overflow-y:auto;line-height:1.65}
+  .term .ln{white-space:pre-wrap}
+  .term .t{color:#7c869c}
+  .term .ok{color:#7ee0a6}
+  .term .warn{color:#f6c560}
+  .term .err{color:#ff8c8c}
+  .term .cur{display:inline-block;width:7px;height:13px;background:var(--teal);vertical-align:-2px;animation:blink 1s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+  .artifacts{display:flex;flex-wrap:wrap;gap:8px}
+  .artifact{display:flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;
+    background:var(--panel-2);font-size:12px;text-decoration:none;color:var(--txt);transition:.15s}
+  .artifact:hover{border-color:var(--primary-2);background:var(--primary-soft);color:var(--primary)}
+  .artifact .fic{font-size:15px}
+  .artifact .meta{font-size:10px;color:var(--txt-3)}
+  .toolcard .foot{display:flex;align-items:center;gap:10px;padding:9px 12px}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:8px;font-size:12.5px;font-weight:600;
+    border:1px solid var(--border-strong);background:var(--panel);color:var(--txt-2);transition:.15s}
+  .btn:hover{border-color:var(--primary-2);color:var(--primary)}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover{background:var(--primary-2);color:#fff}
+  .btn.danger{border-color:#f3c0c0;color:var(--red);background:var(--red-soft)}
+  .btn.danger:hover{background:#fbdada}
+  .btn.sm{padding:5px 10px;font-size:11.5px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* composer */
+  .composer{flex:0 0 auto;border-top:1px solid var(--border);background:var(--panel);padding:10px 12px 12px}
+  .composer .row1{display:flex;align-items:flex-end;gap:8px}
+  .composer textarea{flex:1;resize:none;height:42px;max-height:120px;border:1px solid var(--border-strong);border-radius:10px;
+    padding:10px 12px;font-family:inherit;font-size:13.5px;color:var(--txt);background:var(--panel-2);outline:none;transition:.15s}
+  .composer textarea:focus{border-color:var(--primary-2);background:#fff;box-shadow:0 0 0 3px rgba(109,94,252,.12)}
+  .composer .tools{display:flex;flex-direction:column;gap:6px}
+  .composer .tbtn{width:38px;height:38px;border-radius:10px;border:1px solid var(--border-strong);background:var(--panel-2);
+    display:grid;place-items:center;font-size:16px;color:var(--txt-2);transition:.15s}
+  .composer .tbtn:hover{color:var(--primary);border-color:var(--primary-2)}
+  .composer .tbtn.rec.on{background:var(--red);color:#fff;border-color:var(--red);animation:pulse 1.4s infinite}
+  .composer .tbtn.send{background:var(--primary);color:#fff;border-color:var(--primary);font-size:17px}
+  .composer .tbtn.send:hover{background:var(--primary-2)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 7px rgba(239,68,68,0)}}
+  .composer .row2{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11.5px;color:var(--txt-3)}
+  .composer .row2 .hint{display:flex;align-items:center;gap:5px}
+  .composer .row2 .spacer{flex:1}
+  .composer .stopbtn{display:none;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;background:var(--red-soft);
+    color:var(--red);font-weight:700;font-size:12.5px;border:1px solid #f3c0c0}
+  .composer .stopbtn.on{display:inline-flex}
+  .composer .stopbtn:hover{background:#fbdada}
+
+  /* ===== Workspace (right) ===== */
+  .ws-head{height:46px;flex:0 0 46px;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--panel);
+    border-bottom:1px solid var(--border)}
+  .ws-head .ptitle{font-weight:700;font-size:14px}
+  .ws-head .pmeta{font-size:12px;color:var(--txt-3)}
+  .ws-tabs{display:flex;gap:4px;margin-left:8px}
+  .ws-tab{padding:7px 13px;border-radius:8px;font-size:13px;color:var(--txt-2);font-weight:600;position:relative}
+  .ws-tab:hover{background:var(--panel-3);color:var(--txt)}
+  .ws-tab.active{background:var(--primary-soft);color:var(--primary)}
+  .ws-head .spacer{flex:1}
+  .ws-body{flex:1;overflow-y:auto;padding:16px}
+
+  /* project info view */
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;box-shadow:var(--shadow-sm)}
+  .stat .sl{font-size:11px;color:var(--txt-3);font-weight:600}
+  .stat .sv{font-size:22px;font-weight:800;margin-top:4px;color:var(--txt)}
+  .stat .sv small{font-size:12px;font-weight:600;color:var(--txt-3)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow-sm);margin-bottom:16px}
+  .card .ch{font-weight:700;font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .card .ch .ic{color:var(--primary)}
+  .kv{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed var(--border)}
+  .kv:last-child{border-bottom:none}
+  .kv .k{width:92px;flex:0 0 92px;color:var(--txt-3);font-size:12.5px}
+  .kv .v{font-size:13px;color:var(--txt)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:700;background:var(--panel-3);color:var(--txt-2)}
+  .tag.eb{background:#fff1e6;color:#d97706}
+
+  /* section timeline (chord viz) */
+  .secs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+  .sec{padding:6px 11px;border-radius:9px;background:var(--panel-3);font-size:12px;font-weight:600;color:var(--txt-2);
+    border:1px solid transparent}
+  .sec.cur{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+  .sec .bar{font-size:10px;color:var(--txt-3);font-weight:500;margin-left:6px}
+  .chord-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--border)}
+  .chord-row:last-child{border-bottom:none}
+  .chord-row .lbl{width:70px;flex:0 0 70px;font-weight:700;font-size:12.5px;color:var(--txt-2)}
+  .chords{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+  .chord{padding:4px 11px;border-radius:7px;background:var(--teal-soft);color:#0c7a6e;font-weight:700;font-size:12.5px;
+    font-family:var(--mono)}
+  .chord.alt{background:var(--amber-soft);color:#b45309}
+
+  /* track table */
+  .track{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:11px;
+    background:var(--panel);margin-bottom:9px;cursor:pointer;transition:.15s;box-shadow:var(--shadow-sm)}
+  .track:hover{border-color:var(--primary-2);transform:translateX(2px)}
+  .track.sel{border-color:var(--primary);box-shadow:0 0 0 3px rgba(109,94,252,.12)}
+  .track .idx{width:34px;height:34px;border-radius:9px;background:var(--panel-3);display:grid;place-items:center;
+    font-weight:800;font-size:13px;color:var(--txt-2);flex:0 0 34px}
+  .track.sel .idx{background:var(--primary);color:#fff}
+  .track .info{flex:1;min-width:0}
+  .track .info .nm{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .track .info .sc{font-size:12px;color:var(--txt-3)}
+  .track .stat2{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .badge-done{background:var(--green-soft);color:var(--green)}
+  .badge-draft{background:var(--amber-soft);color:#b45309}
+  .badge-empty{background:var(--panel-3);color:var(--txt-3)}
+  .mini-bar{width:64px;height:6px;border-radius:3px;background:var(--panel-3);overflow:hidden}
+  .mini-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--teal));border-radius:3px}
+
+  /* track editor */
+  .editor-wrap{display:grid;grid-template-columns:1fr 280px;gap:16px}
+  .editor-main{display:flex;flex-direction:column;min-width:0}
+  .editor-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .editor-bar .ttl{font-weight:700;font-size:14px}
+  .editor-bar .spacer{flex:1}
+  .md-editor{width:100%;min-height:380px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:#2b3140;
+    border:1px solid var(--border-strong);border-radius:12px;padding:14px;background:#fbfcfe;resize:vertical;outline:none}
+  .md-editor:focus{border-color:var(--primary-2);box-shadow:0 0 0 3px rgba(109,94,252,.1)}
+  .diag{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;box-shadow:var(--shadow-sm)}
+  .diag .dh{font-weight:700;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+  .diag .item{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px;border-bottom:1px dashed var(--border)}
+  .diag .item:last-child{border-bottom:none}
+  .diag .item .ic{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;flex:0 0 18px}
+  .diag .item .ic.ok{background:var(--green-soft);color:var(--green)}
+  .diag .item .ic.warn{background:var(--amber-soft);color:var(--amber)}
+  .diag .item .ic.err{background:var(--red-soft);color:var(--red)}
+
+  /* midi preview */
+  .midi-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .play-btn{width:42px;height:42px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;
+    font-size:18px;box-shadow:0 4px 12px rgba(109,94,252,.4)}
+  .play-btn:hover{background:var(--primary-2)}
+  .play-btn.playing{background:var(--teal)}
+  .midi-toolbar .tpos{font-family:var(--mono);font-size:13px;color:var(--txt-2);font-weight:600}
+  .piano{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm)}
+  .piano .pr{display:flex;height:18px;border-bottom:1px solid var(--border)}
+  .piano .pr:last-child{border-bottom:none}
+  .piano .pr .lab{width:42px;flex:0 0 42px;font-size:9.5px;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:6px;color:var(--txt-3);font-family:var(--mono);background:var(--panel-2)}
+  .piano .pr.black{background:#2b3140}
+  .piano .pr.black .lab{color:#9aa3b5}
+  .piano .pr .cells{flex:1;display:flex}
+  .piano .pr .cell{flex:1;border-right:1px solid rgba(0,0,0,.04)}
+  .piano .pr.black .cell{border-right:1px solid rgba(255,255,255,.05)}
+  .piano .pr .cell.on{background:linear-gradient(180deg,var(--primary),var(--primary-2))}
+  .piano .pr.black .cell.on{background:linear-gradient(180deg,#9b8bff,#6d5efc)}
+  .playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--red);box-shadow:0 0 6px rgba(239,68,68,.6);z-index:5;
+    pointer-events:none;transition:left .1s linear}
+
+  /* audio view */
+  .audio-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow-sm)}
+  .wave{position:relative;width:100%;height:120px;background:var(--panel-2);border-radius:10px;overflow:hidden;margin:14px 0}
+  .wave svg{display:block;width:100%;height:100%}
+  .wave .prog{position:absolute;top:0;bottom:0;left:0;background:rgba(109,94,252,.1);width:0;border-right:2px solid var(--primary)}
+  .audio-ctrl{display:flex;align-items:center;gap:14px}
+  .audio-ctrl .time{font-family:var(--mono);font-size:12.5px;color:var(--txt-2);font-weight:600}
+  .audio-ctrl .spacer{flex:1}
+  .tl{height:5px;background:var(--panel-3);border-radius:3px;overflow:hidden;margin-top:12px}
+  .tl i{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--teal));width:32%}
+  .src-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .src{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2)}
+  .src .fic{font-size:16px;color:var(--primary)}
+  .src .nm{flex:1;font-size:12.5px;font-weight:600}
+  .src .sz{font-size:11px;color:var(--txt-3)}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:#1d2230;color:#fff;
+    padding:11px 18px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;transition:.25s;z-index:100;
+    display:flex;align-items:center;gap:9px}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast .ic{color:var(--teal)}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ TOP BAR ============ -->
+  <div class="topbar">
+    <div class="logo"><span class="mark">♪</span> AI 音乐创作工作台</div>
+    <div class="sep"></div>
+    <div class="proj-switch">
+      <button class="proj-btn" id="projBtn">
+        <span>📁 走在</span><span class="cr">14 轨 · Eb</span><span style="color:var(--txt-3)">▾</span>
+      </button>
+      <div class="proj-menu" id="projMenu">
+        <div class="item"><span class="ic">♪</span><div><div style="font-weight:600">走在</div><div style="font-size:11px;color:var(--txt-3)">沙发小曲 / Lo-Fi · 14 轨</div></div></div>
+        <div class="item"><span class="ic">✦</span><div><div style="font-weight:600">夜行列车</div><div style="font-size:11px;color:var(--txt-3)">Synthwave · 9 轨（草稿）</div></div></div>
+        <div class="item new"><span class="ic">＋</span><div style="font-weight:600;color:var(--txt-2)">新建工程…</div></div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="model-sel">🧠 模型 <b>orcg</b> · 本地</div>
+    <div class="status-pill" id="wsStatus"><span class="dot"></span> WebSocket 已连接</div>
+    <button class="icon-btn" title="设置">⚙</button>
+  </div>
+
+  <div class="main">
+    <!-- ============ LEFT: CHAT ============ -->
+    <div class="pane-left">
+      <div class="chat-head">
+        <div class="title">💬 对话 <span class="badge">Agent</span></div>
+        <div class="spacer"></div>
+        <div class="mini">🔌 事件流投影</div>
+        <button class="icon-btn" style="width:30px;height:30px;font-size:14px" title="清空对话">🗑</button>
+      </div>
+
+      <div class="chat-body" id="chatBody">
+        <!-- user msg -->
+        <div class="msg user">
+          <div class="av">我</div>
+          <div class="bubble"><div class="who">你 · 15:21</div>
+            <div class="content">帮我把主歌 A（5–12 小节）的节奏吉他铺满，用基础节奏 A，力度 pp。</div>
+          </div>
+        </div>
+
+        <!-- reasoning -->
+        <div class="reasoning" id="r1">
+          <div class="rh" onclick="toggle(this)"><span class="spin"></span> 思考过程 · 推理中
+            <span class="chev">▾</span></div>
+          <div class="rb">分析工程：走在 / 08_节奏吉他 当前为定稿 781 音，但主歌 A 段存在留白。
+策略：调用 musescore-cooperate 生成器，对 5–12 小节套用「基础节奏 A」模板
+  [5勾弦][拍弦,四勾][空拍,四勾][拍弦,四勾]，力度 pp。
+检查依赖：project=走在, bpm=68, 小节区间已锁定。无需新建轨道，走覆盖更新。</div>
+        </div>
+
+        <!-- tool card running -->
+        <div class="toolcard running" id="tc1">
+          <div class="th" onclick="toggle(this)">
+            <div class="ticon">⚙</div>
+            <div><div class="tname">musescore-cooperate</div><div class="tsub">生成 mscx 分轨 · 08_节奏吉他</div></div>
+            <div class="state">
+              <span class="chip run" id="tc1chip">运行中</span>
+              <span class="chip t">3.2s</span>
+              <span class="chev">▾</span>
+            </div>
+          </div>
+          <div class="body">
+            <div class="sect"><div class="sl">调用参数</div>
+              <div class="args"><span class="k">--project</span> <span class="v">"走在"</span>
+<span class="k">--tracks</span> <span class="v">"08_节奏吉他"</span>
+<span class="k">--bars</span> <span class="v">"5-12"</span>
+<span class="k">--pattern</span> <span class="v">"basicA"</span>
+<span class="k">--velocity</span> <span class="v">"pp"</span>
+<span class="k">--bpm</span> <span class="v">68</span></div>
+            </div>
+            <div class="sect"><div class="sl">实时日志</div>
+              <div class="term" id="term1">
+<span class="ln"><span class="t">[15:21:04]</span> load project 走在/song_engineer.json</span>
+<span class="ln"><span class="t">[15:21:04]</span> <span class="ok">✓</span> 读取 14 轨，定位 08_节奏吉他</span>
+<span class="ln"><span class="t">[15:21:05]</span> 生成 timeline 5-12 小节 (4/4, 1920t)</span>
+<span class="ln"><span class="t">[15:21:06]</span> 应用节奏型 basicA · 力度 pp</span>
+<span class="ln"><span class="t">[15:21:07]</span> <span class="warn">⚠</span> 第 9 小节溢出 4 ticks，截断</span>
+<span class="ln"><span class="t">[15:21:07]</span> 校验时值：8 小节 × 1920 = 15360t <span class="ok">OK</span></span>
+<span class="ln"><span class="cur"></span></span>
+              </div>
+            </div>
+            <div class="sect"><div class="sl">产物</div>
+              <div class="artifacts">
+                <a class="artifact" href="#"><span class="fic">🎼</span><div><div>x.mscx</div><div class="meta">容器 · 312 KB</div></div></a>
+                <a class="artifact" href="#"><span class="fic">🎹</span><div><div>08_节奏吉他.json</div><div class="meta">781 音</div></div></a>
+                <a class="artifact" href="#"><span class="fic">🔊</span><div><div>preview.mp3</div><div class="meta">MuseSounds 渲染</div></div></a>
+              </div>
+            </div>
+            <div class="foot">
+              <button class="btn danger sm" onclick="stopTask('tc1')">■ 停止任务</button>
+              <span style="font-size:11.5px;color:var(--txt-3)">task_id: tsk_9f2a · 实时推送中</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ai text reply -->
+        <div class="msg ai">
+          <div class="av">AI</div>
+          <div class="bubble"><div class="who">Agent · 15:21</div>
+            <div class="content"><p>已用「基础节奏 A」铺满主歌 A（5–12 小节），力度 pp。第 9 小节有一处 4 ticks 溢出已自动截断，时值校验通过。</p>
+            <p>08_节奏吉他现 781 音，右侧分轨已更新。要不要顺手把副歌（25–32）也铺一遍？</p></div>
+          </div>
+        </div>
+
+        <!-- user msg 2 -->
+        <div class="msg user">
+          <div class="av">我</div>
+          <div class="bubble"><div class="who">你 · 15:24</div>
+            <div class="content">间奏（21–24）留白给 solo，用基础节奏 B 就行。</div>
+          </div>
+        </div>
+
+        <!-- completed tool card -->
+        <div class="toolcard" id="tc2">
+          <div class="th" onclick="toggle(this)">
+            <div class="ticon">🎵</div>
+            <div><div class="tname">musescore-cooperate</div><div class="tsub">生成 mscx 分轨 · 12_泛音环境点缀</div></div>
+            <div class="state">
+              <span class="chip ok">完成</span>
+              <span class="chip t">1.8s</span>
+              <span class="chev">▾</span>
+            </div>
+          </div>
+          <div class="body">
+            <div class="sect"><div class="sl">调用参数</div>
+              <div class="args"><span class="k">--project</span> <span class="v">"走在"</span>
+<span class="k">--tracks</span> <span class="v">"12_泛音环境点缀"</span>
+<span class="k">--bars</span> <span class="v">"21-24"</span>
+<span class="k">--pattern</span> <span class="v">"basicB"</span></div>
+            </div>
+            <div class="sect"><div class="sl">实时日志</div>
+              <div class="term">
+<span class="ln"><span class="t">[15:24:10]</span> 生成 21-24 小节 琶音(8分铺满)</span>
+<span class="ln"><span class="t">[15:24:11]</span> <span class="ok">✓</span> 留白策略：solo 区不做柱式</span>
+<span class="ln"><span class="t">[15:24:11]</span> 校验时值 <span class="ok">OK</span></span>
+              </div>
+            </div>
+            <div class="sect"><div class="sl">产物</div>
+              <div class="artifacts">
+                <a class="artifact" href="#"><span class="fic">🎼</span><div><div>x.mscx</div><div class="meta">容器 · 96 KB</div></div></a>
+                <a class="artifact" href="#"><span class="fic">🔊</span><div><div>preview.mp3</div><div class="meta">12s</div></div></a>
+              </div>
+            </div>
+            <div class="foot">
+              <button class="btn sm" onclick="retryTask(this)">↻ 重试</button>
+              <button class="btn sm">查看 diff</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ai text -->
+        <div class="msg ai">
+          <div class="av">AI</div>
+          <div class="bubble"><div class="who">Agent · 15:24</div>
+            <div class="content"><p>间奏 21–24 已用基础节奏 B 处理，做成 8 分琶音铺满但留白给 solo 主音，不抢旋律。12_泛音环境点缀已更新。</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div class="composer">
+        <div class="row1">
+          <textarea id="composerInput" placeholder="给 Agent 下指令，或描述你的修改意图…（Enter 发送 / Shift+Enter 换行）"></textarea>
+          <div class="tools">
+            <button class="tbtn rec" id="recBtn" title="录音哼唱">●</button>
+            <button class="tbtn" title="上传音频 / MIDI">📎</button>
+            <button class="tbtn send" id="sendBtn" title="发送">➤</button>
+          </div>
+        </div>
+        <div class="row2">
+          <span class="hint">🎤 录音转哼唱</span>
+          <span class="hint">📎 附件</span>
+          <span class="hint">⌘ 支持 @轨道 引用</span>
+          <span class="spacer"></span>
+          <button class="stopbtn" id="stopBtn">■ 停止生成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT: WORKSPACE ============ -->
+    <div class="pane-right">
+      <div class="ws-head">
+        <div class="ptitle">走在</div>
+        <div class="pmeta">14 轨 · Eb 调 · 68 BPM · 52 小节</div>
+        <div class="ws-tabs" id="wsTabs">
+          <button class="ws-tab active" data-view="info">工程信息</button>
+          <button class="ws-tab" data-view="tracks">分轨</button>
+          <button class="ws-tab" data-view="editor">轨道编辑</button>
+          <button class="ws-tab" data-view="chord">和弦</button>
+          <button class="ws-tab" data-view="midi">MIDI</button>
+          <button class="ws-tab" data-view="audio">音频</button>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn primary sm">⬇ 导出工程</button>
+      </div>
+      <div class="ws-body" id="wsBody">
+
+        <!-- ===== VIEW: project info ===== -->
+        <div class="view" data-view="info">
+          <div class="stat-grid">
+            <div class="stat"><div class="sl">总轨数</div><div class="sv">14 <small>轨</small></div></div>
+            <div class="stat"><div class="sl">调性</div><div class="sv">Eb <small>capo3</small></div></div>
+            <div class="stat"><div class="sl">速度</div><div class="sv">68 <small>BPM</small></div></div>
+            <div class="stat"><div class="sl">时长</div><div class="sv">1:52 <small>52 小节</small></div></div>
+          </div>
+          <div class="card">
+            <div class="ch"><span class="ic">📋</span> 工程概要 <span class="tag">project.md · 只读</span></div>
+            <div class="kv"><div class="k">风格</div><div class="v">沙发小曲 / Lo-Fi · 温暖松弛的卧室感</div></div>
+            <div class="kv"><div class="k">结构</div><div class="v">8 段：前奏→主歌A→主歌B→间奏→副歌→主歌A'→副歌2→尾奏</div></div>
+            <div class="kv"><div class="k">核心乐器</div><div class="v">钢弦吉他 / 尼龙弦 / Soprano 人声 /  electric bass / 军鼓打击</div></div>
+            <div class="kv"><div class="k">和弦骨架</div><div class="v">Cadd9–C7sus4–Em9/B–Em11/B（主歌）· Cmaj9（副歌）· Em7（间奏）</div></div>
+          </div>
+          <div class="card">
+            <div class="ch"><span class="ic">🩺</span> 工程诊断</div>
+            <div class="kv"><div class="k">完成度</div><div class="v">6 / 14 轨定稿 · 4 轨草稿 · 4 轨待补</div></div>
+            <div class="kv"><div class="k">时值校验</div><div class="v" style="color:var(--green)">✓ 全部小节 = 1920 ticks</div></div>
+            <div class="kv"><div class="k">待办</div><div class="v">05_solo 主音仅 31 音需扩展 · 09_和声未写 · 10_pad 待补</div></div>
+          </div>
+        </div>
+
+        <!-- ===== VIEW: tracks ===== -->
+        <div class="view hidden" data-view="tracks">
+          <div id="trackList"></div>
+        </div>
+
+        <!-- ===== VIEW: editor ===== -->
+        <div class="view hidden" data-view="editor">
+          <div class="editor-wrap">
+            <div class="editor-main">
+              <div class="editor-bar">
+                <div class="ttl" id="edTitle">08_节奏吉他</div>
+                <span class="chip ok" style="background:var(--green-soft);color:var(--green)">定稿</span>
+                <div class="spacer"></div>
+                <button class="btn sm">⤢ 全屏</button>
+                <button class="btn primary sm" id="saveTrackBtn">💾 保存并同步</button>
+              </div>
+              <textarea class="md-editor" id="mdEditor" spellcheck="false"># 08_节奏吉他 (Acoustic Nylon)
+uid: 13010  | 调性: Eb(capo3) | bpm: 68 | 段落: 主歌A(5-12)
+
+## 节奏型
+- 基础节奏A: [5勾弦][拍弦,四勾][空拍,四勾][拍弦,四勾]
+- 基础节奏B: 一个琶音(8分铺满)  → 间奏/尾奏留白
+
+## 音符 (摘要)
+| 小节 | 拍 | 弦 | 技法 | 力度 |
+|------|----|----|------|------|
+| 5    | 1  | 5  | 5勾弦 | pp |
+| 5    | 2  | -  | 拍弦+四勾 | pp |
+| 5    | 3  | -  | 空拍+四勾 | pp |
+| 5    | 4  | -  | 拍弦+四勾 | pp |
+| ...  |    |    | (781 音已铺满) |
+
+## 诊断
+- 时值: OK (8×1920=15360t)
+- 第9小节溢出 4t 已截断</textarea>
+            </div>
+            <div class="diag">
+              <div class="dh">🩺 实时诊断</div>
+              <div class="item"><span class="ic ok">✓</span> MD 解析成功，轨道 JSON 已生成</div>
+              <div class="item"><span class="ic ok">✓</span> 时值校验通过 (每小节 1920t)</div>
+              <div class="item"><span class="ic warn">⚠</span> 第 9 小节存在 4 ticks 截断</div>
+              <div class="item"><span class="ic ok">✓</span> 和弦与 01_吉他骨架同步</div>
+              <div class="item" style="margin-top:8px"><span class="ic" style="background:var(--blue-soft);color:var(--blue)">↯</span> 保存后将回写 song_engineer.json</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== VIEW: chord ===== -->
+        <div class="view hidden" data-view="chord">
+          <div class="card">
+            <div class="ch"><span class="ic">🎼</span> 段落与和弦进行 <span class="tag eb">Eb 调 · capo3</span></div>
+            <div class="secs">
+              <span class="sec">前奏<span class="bar">1-4</span></span>
+              <span class="sec cur">主歌A<span class="bar">5-12</span></span>
+              <span class="sec">主歌B<span class="bar">13-20</span></span>
+              <span class="sec">间奏<span class="bar">21-24</span></span>
+              <span class="sec">副歌<span class="bar">25-32</span></span>
+              <span class="sec">主歌A'<span class="bar">33-40</span></span>
+              <span class="sec">副歌2<span class="bar">41-48</span></span>
+              <span class="sec">尾奏<span class="bar">49-52</span></span>
+            </div>
+            <div class="chord-row"><div class="lbl">主歌 A/B</div><div class="chords">
+              <span class="chord">Cadd9</span><span class="chord">C7sus4</span><span class="chord alt">Em9/B</span><span class="chord alt">Em11/B</span></div></div>
+            <div class="chord-row"><div class="lbl">副歌</div><div class="chords">
+              <span class="chord">Cadd9</span><span class="chord">C7sus4</span><span class="chord alt">Em11/B</span><span class="chord">Cmaj9</span></div></div>
+            <div class="chord-row"><div class="lbl">间奏/尾奏</div><div class="chords">
+              <span class="chord alt">Em7</span></div></div>
+            <div style="margin-top:12px;font-size:12px;color:var(--txt-3)">💡 和弦与 01_吉他轨道实时同步，编辑轨道 MD 后此处自动刷新。</div>
+          </div>
+        </div>
+
+        <!-- ===== VIEW: midi ===== -->
+        <div class="view hidden" data-view="midi">
+          <div class="card">
+            <div class="ch"><span class="ic">🎹</span> MIDI 预览 · <span id="midiTrack">08_节奏吉他</span></div>
+            <div class="midi-toolbar">
+              <button class="play-btn" id="midiPlay">▶</button>
+              <span class="tpos" id="midiPos">0:00 / 0:08</span>
+              <span style="font-size:12px;color:var(--txt-3)">68 BPM · 4/4</span>
+            </div>
+            <div class="piano" id="piano" style="position:relative">
+              <!-- rows generated by JS -->
+              <div class="playhead" id="playhead" style="left:42px"></div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="btn sm">⬇ 导出 .mid</button>
+              <button class="btn sm">🔁 量化到 60-tick</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== VIEW: audio ===== -->
+        <div class="view hidden" data-view="audio">
+          <div class="audio-card">
+            <div class="ch" style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">🔊 工程音频 · 走在_混音预览</div>
+            <div class="wave">
+              <svg viewBox="0 0 800 120" preserveAspectRatio="none" id="waveSvg"></svg>
+              <div class="prog" id="waveProg"></div>
+            </div>
+            <div class="audio-ctrl">
+              <button class="play-btn" id="audioPlay">▶</button>
+              <span class="time" id="audioTime">0:00 / 1:52</span>
+              <div class="spacer"></div>
+              <button class="btn sm">🔀</button>
+              <button class="btn sm">🔁</button>
+              <span style="font-size:12px;color:var(--txt-3)">音量</span>
+              <span style="font-size:16px">🔊</span>
+            </div>
+            <div class="tl"><i id="audioTl"></i></div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="ch"><span class="ic">📦</span> 分轨音频源</div>
+            <div class="src-list">
+              <div class="src"><span class="fic">🎸</span><div class="nm">01_吉他.wav</div><div class="sz">4.2 MB</div><button class="btn sm">▶</button></div>
+              <div class="src"><span class="fic">🎤</span><div class="nm">02_主唱.wav</div><div class="sz">5.1 MB</div><button class="btn sm">▶</button></div>
+              <div class="src"><span class="fic">🥁</span><div class="nm">14_slap.wav</div><div class="sz">3.8 MB</div><button class="btn sm">▶</button></div>
+              <div class="src"><span class="fic">🎹</span><div class="nm">走在_master.mp3</div><div class="sz">2.9 MB</div><button class="btn sm">⬇</button></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="ic">✓</span><span id="toastMsg"></span></div>
+
+<script>
+/* ---------- helpers ---------- */
+function toggle(el){ // el is the clickable header/row; find nearest card
+  var card = el.closest('.reasoning,.toolcard');
+  card.classList.toggle('collapsed');
+}
+function toast(msg){
+  var t=document.getElementById('toast'); document.getElementById('toastMsg').textContent=msg;
+  t.classList.add('show'); setTimeout(function(){t.classList.remove('show')},1800);
+}
+
+/* ---------- project menu ---------- */
+var projBtn=document.getElementById('projBtn'), projMenu=document.getElementById('projMenu');
+projBtn.onclick=function(e){e.stopPropagation();projMenu.classList.toggle('open')};
+document.addEventListener('click',function(){projMenu.classList.remove('open')});
+projMenu.querySelectorAll('.item').forEach(function(it){
+  it.onclick=function(){toast('已切换工程（原型演示）');projMenu.classList.remove('open')};
+});
+
+/* ---------- workspace tabs ---------- */
+var tabs=document.getElementById('wsTabs'), body=document.getElementById('wsBody');
+tabs.querySelectorAll('.ws-tab').forEach(function(tab){
+  tab.onclick=function(){
+    tabs.querySelectorAll('.ws-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    var v=tab.dataset.view;
+    body.querySelectorAll('.view').forEach(function(vw){
+      vw.classList.toggle('hidden', vw.dataset.view!==v);
+    });
+    if(v==='midi') renderPiano();
+    if(v==='audio') renderWave();
+  };
+});
+
+/* ---------- track list ---------- */
+var tracks=[
+  {idx:'01',nm:'吉他',sc:'Acoustic Steel Plucked · 247 音',st:'done',pct:100},
+  {idx:'02',nm:'主唱',sc:'Sopranos · 304 音',st:'done',pct:100},
+  {idx:'05',nm:'solo吉他主',sc:'Acoustic Steel Picked · 31 音',st:'draft',pct:20},
+  {idx:'06',nm:'solo吉他辅1',sc:'Electric LP - Clean',st:'draft',pct:0},
+  {idx:'08',nm:'节奏吉他',sc:'Acoustic Nylon · 781 音',st:'done',pct:100},
+  {idx:'09',nm:'和声',sc:'Altos',st:'empty',pct:0},
+  {idx:'10',nm:'氛围垫音pad',sc:'Violins 2',st:'draft',pct:0},
+  {idx:'12',nm:'泛音环境点缀',sc:'Acoustic Nylon',st:'draft',pct:0},
+  {idx:'13',nm:'轻贝斯',sc:'Electric Bass · 52 音',st:'done',pct:100},
+  {idx:'14',nm:'slap',sc:'Marching Tenors · 796 音',st:'done',pct:100},
+];
+var trackList=document.getElementById('trackList');
+tracks.forEach(function(t,i){
+  var badge = t.st==='done'?'<span class="chip badge-done">定稿</span>'
+            : t.st==='draft'?'<span class="chip badge-draft">草稿</span>'
+            : '<span class="chip badge-empty">待补</span>';
+  var div=document.createElement('div');
+  div.className='track'+(t.idx==='08'?' sel':'');
+  div.innerHTML='<div class="idx">'+t.idx+'</div>'+
+    '<div class="info"><div class="nm">'+t.nm+' '+badge+'</div><div class="sc">'+t.sc+'</div></div>'+
+    '<div class="stat2"><div class="mini-bar"><i style="width:'+t.pct+'%"></i></div><span style="font-size:11px;color:var(--txt-3)">'+t.pct+'%</span></div>';
+  div.onclick=function(){
+    trackList.querySelectorAll('.track').forEach(x=>x.classList.remove('sel'));
+    div.classList.add('sel');
+    document.getElementById('edTitle').textContent=t.idx+'_'+t.nm;
+    document.getElementById('midiTrack').textContent=t.idx+'_'+t.nm;
+    // switch to editor
+    tabs.querySelector('[data-view="editor"]').click();
+    toast('已载入 '+t.idx+'_'+t.nm);
+  };
+  trackList.appendChild(div);
+});
+
+/* ---------- save track (broken link demo -> now works) ---------- */
+document.getElementById('saveTrackBtn').onclick=function(){
+  this.textContent='✓ 已同步'; this.classList.add('primary');
+  var self=this; setTimeout(function(){self.textContent='💾 保存并同步';},1400);
+  toast('轨道 MD 已回写 song_engineer.json');
+};
+
+/* ---------- tool card stop / retry ---------- */
+function stopTask(id){
+  var c=document.getElementById(id); c.classList.remove('running');
+  var chip=c.querySelector('#'+id+'chip')||c.querySelector('.chip.run');
+  if(chip){chip.className='chip fail';chip.textContent='已停止';}
+  c.querySelector('.foot').innerHTML='<button class="btn sm" onclick="retryTask(this)">↻ 重试</button><span style="font-size:11.5px;color:var(--txt-3)">任务被用户中断</span>';
+  toast('已发送中断信号 (InterruptToken)');
+}
+function retryTask(btn){
+  var card=btn.closest('.toolcard'); card.classList.add('running');
+  var chip=card.querySelector('.chip'); chip.className='chip run';chip.textContent='运行中';
+  toast('已重试任务');
+}
+
+/* ---------- composer: send / record / stop ---------- */
+var input=document.getElementById('composerInput');
+var stopBtn=document.getElementById('stopBtn');
+function sendMsg(){
+  var txt=input.value.trim(); if(!txt) return;
+  var body=document.getElementById('chatBody');
+  var m=document.createElement('div'); m.className='msg user';
+  m.innerHTML='<div class="av">我</div><div class="bubble"><div class="who">你 · 刚刚</div><div class="content">'+txt.replace(/</g,'&lt;')+'</div></div>';
+  body.appendChild(m); input.value=''; body.scrollTop=body.scrollHeight;
+  // simulate running state
+  stopBtn.classList.add('on');
+  setTimeout(function(){
+    stopBtn.classList.remove('on');
+    var a=document.createElement('div'); a.className='msg ai';
+    a.innerHTML='<div class="av">AI</div><div class="bubble"><div class="who">Agent · 刚刚</div><div class="content"><p>收到，正在按指令处理（原型演示，未真正调用后端）。</p></div></div>';
+    body.appendChild(a); body.scrollTop=body.scrollHeight;
+  },1600);
+}
+document.getElementById('sendBtn').onclick=sendMsg;
+input.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
+var recBtn=document.getElementById('recBtn');
+recBtn.onclick=function(){ recBtn.classList.toggle('on'); toast(recBtn.classList.contains('on')?'录音中…（哼唱转和弦）':'录音结束');};
+stopBtn.onclick=function(){ stopBtn.classList.remove('on'); toast('已停止生成');};
+
+/* ---------- reasoning collapse demo ---------- */
+document.getElementById('r1').addEventListener('click',function(e){
+  if(e.target.closest('.rh')) this.classList.toggle('collapsed');
+});
+
+/* ---------- piano roll ---------- */
+function renderPiano(){
+  var piano=document.getElementById('piano');
+  // remove old rows but keep playhead
+  piano.querySelectorAll('.pr').forEach(function(r){r.remove()});
+  var notes=['E4','F#4','G4','A4','B4','C5','D5','E5','F#5','G5'];
+  var black={'F#4':1,'A4':0,'B4':0,'C5':0,'D5':0,'F#5':1,'G5':0};
+  var cols=16;
+  // sample pattern (08_节奏吉他: 5勾弦 strums)
+  var onMap={0:[0,2,4,5,7],2:[0,2,4,5,7],4:[0,2,4,5,7],6:[0,2,4,5,7],8:[1,3,5,6,8],10:[1,3,5,6,8],12:[1,3,5,6,8],14:[1,3,5,6,8]};
+  notes.slice().reverse().forEach(function(n){
+    var isBlack=black[n]!==undefined;
+    var row=document.createElement('div'); row.className='pr'+(isBlack?' black':'');
+    var cells='';
+    for(var c=0;c<cols;c++){
+      var on=(onMap[c]||[]).indexOf(notes.indexOf(n))>=0;
+      cells+='<div class="cell'+(on?' on':'')+'"></div>';
+    }
+    row.innerHTML='<div class="lab">'+(isBlack?'':n)+'</div><div class="cells">'+cells+'</div>';
+    piano.insertBefore(row, document.getElementById('playhead'));
+  });
+}
+var midiPlaying=false, midiTimer=null, midiX=42;
+document.getElementById('midiPlay').onclick=function(){
+  midiPlaying=!midiPlaying; this.textContent=midiPlaying?'❚❚':'▶';
+  this.classList.toggle('playing',midiPlaying);
+  if(midiPlaying){
+    midiTimer=setInterval(function(){
+      midiX+=8; if(midiX>42+16*38){midiX=42;clearInterval(midiTimer);midiPlaying=false;
+        document.getElementById('midiPlay').textContent='▶';document.getElementById('midiPlay').classList.remove('playing');}
+      document.getElementById('playhead').style.left=midiX+'px';
+      document.getElementById('midiPos').textContent='0:0'+(Math.floor((midiX-42)/38))+' / 0:08';
+    },120);
+  } else { clearInterval(midiTimer); }
+};
+
+/* ---------- waveform ---------- */
+function renderWave(){
+  var svg=document.getElementById('waveSvg'); if(svg.dataset.done) return; svg.dataset.done=1;
+  var w=800,h=120,mid=h/2,bars='';
+  for(var i=0;i<160;i++){
+    var x=i*5;
+    var amp=Math.abs(Math.sin(i*0.3)*Math.cos(i*0.07))* (8+Math.random()*46);
+    var col = i<51?'#6d5efc':(i<102?'#10b8a6':'#8b7dff');
+    bars+='<rect x="'+x+'" y="'+(mid-amp)+'" width="3" height="'+(amp*2)+'" rx="1.5" fill="'+col+'" opacity="0.85"/>';
+  }
+  svg.innerHTML=bars;
+}
+var audioPlaying=false, aprog=0, aTimer=null;
+document.getElementById('audioPlay').onclick=function(){
+  audioPlaying=!audioPlaying; this.textContent=audioPlaying?'❚❚':'▶'; this.classList.toggle('playing',audioPlaying);
+  if(audioPlaying){
+    aTimer=setInterval(function(){
+      aprog+=0.5; if(aprog>=100){aprog=0;clearInterval(aTimer);audioPlaying=false;
+        document.getElementById('audioPlay').textContent='▶';document.getElementById('audioPlay').classList.remove('playing');}
+      document.getElementById('waveProg').style.width=aprog+'%';
+      document.getElementById('audioTl').style.width=aprog+'%';
+      var sec=Math.floor(112*aprog/100);
+      document.getElementById('audioTime').textContent='0:'+String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0')+' / 1:52';
+    },200);
+  } else clearInterval(aTimer);
+};
+
+/* init: render chord view default hidden but tracks not; show info */
+renderPiano(); // pre-render so midi tab is instant
+</script>
+</body>
+</html>

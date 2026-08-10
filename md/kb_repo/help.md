@@ -34,6 +34,10 @@ kb_repo/
 └── style/                   # 风格参考
 ```
 
+## 私有知识库
+md/kb_repo/private_kb
+特点不上传git. 也不会被git 覆盖。
+
 ## 快速入门
 
 1. **要生成什么？**

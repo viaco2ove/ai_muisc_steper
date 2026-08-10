@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 音乐工作台 · DAW 原型（分轨混音 + 逐音符编辑）</title>
+<style>
+  :root{
+    --bg:#eef0f3; --panel:#ffffff; --panel-2:#f7f8fa; --panel-3:#eef1f4;
+    --border:#e2e5ea; --border-strong:#d2d7df;
+    --txt:#1f2330; --txt-2:#5b6472; --txt-3:#9aa1ad;
+    --primary:#6d5efc; --primary-soft:#efecff; --primary-2:#8b7dff;
+    --teal:#10b8a6; --teal-soft:#e3f8f4;
+    --amber:#f59e0b; --amber-soft:#fef3e0;
+    --red:#ef4444; --red-soft:#fdeaea;
+    --green:#16a34a; --green-soft:#e6f7ec;
+    --blue:#3b82f6; --blue-soft:#e8f1ff;
+    --radius:10px; --shadow-sm:0 1px 2px rgba(20,24,40,.06); --shadow:0 4px 16px rgba(20,24,40,.08);
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+    --sans:-apple-system,'PingFang SC','Microsoft YaHei',Segoe UI,Roboto,sans-serif;
+    --rowh:15px; --rulerw:46px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:13px;overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#cdd2db;border-radius:6px;border:2px solid var(--panel)}
+  ::-webkit-scrollbar-thumb:hover{background:#b6bcc7}
+
+  .app{display:flex;flex-direction:column;height:100vh}
+  .topbar{height:50px;flex:0 0 50px;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;padding:0 16px;gap:12px}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+  .logo .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--primary),var(--teal));
+    display:grid;place-items:center;color:#fff;font-size:14px}
+  .topbar .sep{width:1px;height:22px;background:var(--border)}
+  .pill{font-size:12px;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--border);
+    padding:5px 11px;border-radius:20px;font-weight:600}
+  .pill b{color:var(--primary)}
+  .topbar .spacer{flex:1}
+  .status-pill{display:flex;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;background:var(--green-soft);
+    color:var(--green);font-size:12px;font-weight:600}
+  .status-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:600;
+    border:1px solid var(--border-strong);background:var(--panel);color:var(--txt-2);transition:.15s}
+  .btn:hover{border-color:var(--primary-2);color:var(--primary)}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover{background:var(--primary-2);color:#fff}
+  .btn.sm{padding:4px 9px;font-size:11.5px}
+  .btn.on{background:var(--primary-soft);color:var(--primary);border-color:var(--primary-2)}
+
+  .daw{flex:1;display:flex;min-height:0}
+  /* ===== LEFT: MIX / TRACKS (DAW) ===== */
+  .mix-pane{width:42%;min-width:360px;max-width:560px;display:flex;flex-direction:column;background:var(--panel);
+    border-right:1px solid var(--border)}
+  .mix-head{flex:0 0 auto;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel-2);
+    display:flex;align-items:center;gap:10px}
+  .mix-head .t{font-weight:700;font-size:13.5px}
+  .mix-head .spacer{flex:1}
+  .master{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt-2)}
+  .master input[type=range]{width:90px}
+  .mix-body{flex:1;overflow-y:auto;padding:8px}
+  .lane{display:flex;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden;
+    background:var(--panel);box-shadow:var(--shadow-sm);transition:.15s}
+  .lane.sel{border-color:var(--primary);box-shadow:0 0 0 3px rgba(109,94,252,.12)}
+  .lane.dim{opacity:.45}
+  .lane-head{width:172px;flex:0 0 172px;padding:9px 10px;border-right:1px solid var(--border);background:var(--panel-2);
+    display:flex;flex-direction:column;gap:7px;cursor:pointer}
+  .lane-head .row1{display:flex;align-items:center;gap:7px}
+  .lane-head .idx{width:26px;height:26px;border-radius:7px;background:var(--panel-3);display:grid;place-items:center;
+    font-weight:800;font-size:12px;color:var(--txt-2);flex:0 0 26px}
+  .lane.sel .idx{background:var(--primary);color:#fff}
+  .lane-head .nm{font-weight:700;font-size:12.5px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ms-btns{display:flex;gap:4px}
+  .ms{padding:1px 7px;border-radius:6px;font-size:11px;font-weight:800;border:1px solid var(--border-strong);
+    color:var(--txt-3);background:var(--panel)}
+  .ms.m.on{background:var(--amber-soft);color:var(--amber);border-color:#f0d49a}
+  .ms.s.on{background:var(--blue-soft);color:var(--blue);border-color:#bcd5f5}
+  .timbre{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--primary-soft);color:var(--primary);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .timbre.vocal{background:var(--teal-soft);color:#0c7a6e}
+  .timbre.drum{background:var(--red-soft);color:var(--red)}
+  .vol-row{display:flex;align-items:center;gap:6px}
+  .vol-row label{font-size:10px;color:var(--txt-3);width:24px}
+  .vol-row input[type=range]{flex:1;height:4px;accent-color:var(--primary)}
+  .vol-row .vv{font-size:10px;color:var(--txt-3);width:26px;text-align:right;font-family:var(--mono)}
+  .vel-meter{height:5px;border-radius:3px;background:var(--panel-3);overflow:hidden}
+  .vel-meter i{display:block;height:100%;background:linear-gradient(90deg,var(--amber),var(--primary));border-radius:3px}
+  .lane-tl{flex:1;position:relative;overflow:hidden;background:
+    repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,0,0,.035) 39px,rgba(0,0,0,.035) 40px);
+    cursor:pointer;min-height:62px}
+  .lane-tl .nb{position:absolute;height:14px;border-radius:4px;top:8px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);
+    font-size:9px;color:#fff;display:flex;align-items:center;padding:0 4px;overflow:hidden;white-space:nowrap}
+  .lane-tl .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--txt-3);font-size:11px}
+  .beat-ticks{position:absolute;top:0;bottom:0;width:1px;background:rgba(0,0,0,.06)}
+
+  /* ===== RIGHT: NOTE EDITOR ===== */
+  .editor-pane{flex:1;display:flex;flex-direction:column;background:var(--bg);min-width:0}
+  .ed-head{flex:0 0 auto;height:46px;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--panel);
+    border-bottom:1px solid var(--border)}
+  .ed-head .t{font-weight:700;font-size:13.5px}
+  .ed-head .sub{font-size:12px;color:var(--txt-3)}
+  .ed-head .spacer{flex:1}
+  .ed-body{flex:1;display:flex;min-height:0}
+  .roll-wrap{flex:1;display:flex;flex-direction:column;min-width:0}
+  .roll-toolbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--panel-2);
+    border-bottom:1px solid var(--border);font-size:12px;color:var(--txt-2)}
+  .roll-toolbar .spacer{flex:1}
+  .pianoroll{flex:1;display:flex;min-height:0;background:var(--panel)}
+  .pr-ruler{flex:0 0 var(--rulerw);border-right:1px solid var(--border);background:var(--panel-2);position:relative;overflow:hidden}
+  .pr-ruler .rk{position:absolute;right:5px;font-size:9px;font-family:var(--mono);color:var(--txt-3);transform:translateY(-50%)}
+  .pr-ruler .rk.black{color:#aeb6c4}
+  .pr-view{flex:1;overflow:auto;position:relative}
+  .pr-canvas{position:relative;background:
+    repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,0,0,.04) 39px,rgba(0,0,0,.04) 40px)}
+  .pr-canvas .hgrid{position:absolute;left:0;right:0;height:1px;background:rgba(0,0,0,.03)}
+  .pr-canvas .hgrid.black{background:rgba(0,0,0,.06)}
+  .pr-canvas .note{position:absolute;border-radius:4px 5px 5px 4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.3),var(--shadow-sm);
+    cursor:grab;display:flex;align-items:center;padding:0 5px;font-size:10px;color:#fff;overflow:hidden;white-space:nowrap;
+    user-select:none}
+  .pr-canvas .note:active{cursor:grabbing}
+  .pr-canvas .note.sel{outline:2px solid #fff;box-shadow:0 0 0 2px var(--primary)}
+  .pr-canvas .note .lbl{opacity:.95;pointer-events:none}
+  .pr-canvas .playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:6;pointer-events:none;
+    box-shadow:0 0 6px rgba(239,68,68,.5)}
+  .pr-canvas .barline{position:absolute;top:0;bottom:0;width:1px;background:rgba(0,0,0,.08)}
+
+  /* ===== INSPECTOR ===== */
+  .inspector{flex:0 0 308px;border-left:1px solid var(--border);background:var(--panel);overflow-y:auto;padding:14px}
+  .insp-h{font-weight:700;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:7px}
+  .insp-h .ic{color:var(--primary)}
+  .insp-sub{font-size:11.5px;color:var(--txt-3);margin-bottom:12px}
+  .sec-t{font-size:10.5px;font-weight:800;color:var(--txt-3);text-transform:uppercase;letter-spacing:.6px;
+    margin:14px 0 8px;display:flex;align-items:center;gap:6px}
+  .sec-t:first-of-type{margin-top:0}
+  .field{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .field label{width:62px;flex:0 0 62px;font-size:12px;color:var(--txt-2)}
+  .field input[type=text],.field input[type=number],.field select{flex:1;height:30px;border:1px solid var(--border-strong);
+    border-radius:7px;padding:0 9px;font-size:12.5px;background:var(--panel-2);outline:none;font-family:inherit;color:var(--txt)}
+  .field input:focus,.field select:focus{border-color:var(--primary-2);background:#fff;box-shadow:0 0 0 3px rgba(109,94,252,.1)}
+  .field .unit{font-size:11px;color:var(--txt-3);width:26px}
+  .slider-row{margin-bottom:11px}
+  .slider-row .sl{display:flex;justify-content:space-between;font-size:11.5px;color:var(--txt-2);margin-bottom:4px}
+  .slider-row .sl b{color:var(--txt);font-family:var(--mono)}
+  .slider-row input[type=range]{width:100%;height:5px;accent-color:var(--primary)}
+  .ph-list{border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  .ph-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--panel-2)}
+  .ph-row:last-child{border-bottom:none}
+  .ph-row .ph-idx{font-size:10px;color:var(--txt-3);width:16px;font-family:var(--mono)}
+  .ph-row input.sym{flex:0 0 70px;height:26px;border:1px solid var(--border-strong);border-radius:6px;padding:0 7px;
+    font-size:12px;text-align:center;font-family:var(--mono);background:#fff;outline:none}
+  .ph-row .durwrap{flex:1}
+  .ph-row .durwrap input[type=range]{width:100%;height:4px;accent-color:var(--teal)}
+  .ph-row .durv{font-size:10px;color:var(--txt-3);width:34px;text-align:right;font-family:var(--mono)}
+  .ph-row .del{color:var(--txt-3);font-size:14px;padding:0 2px}
+  .ph-row .del:hover{color:var(--red)}
+  .add-ph{width:100%;margin-top:7px;padding:6px;border:1px dashed var(--border-strong);border-radius:7px;color:var(--txt-3);
+    font-size:11.5px}
+  .add-ph:hover{border-color:var(--primary-2);color:var(--primary)}
+  .split-btn{width:100%;margin-top:10px;padding:8px;border-radius:8px;background:var(--primary-soft);color:var(--primary);
+    font-weight:700;font-size:12.5px;border:1px solid #ddd6ff}
+  .split-btn:hover{background:#e4dfff}
+  .empty-note{padding:40px 16px;text-align:center;color:var(--txt-3);font-size:13px}
+  .empty-note .big{font-size:34px;margin-bottom:10px;opacity:.5}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10.5px;font-weight:700;background:var(--panel-3);color:var(--txt-2)}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:#1d2230;color:#fff;
+    padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);opacity:0;transition:.25s;z-index:100;
+    display:flex;align-items:center;gap:9px}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast .ic{color:var(--teal)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- TOP -->
+  <div class="topbar">
+    <div class="logo"><span class="mark">♪</span> AI 音乐工作台</div>
+    <div class="sep"></div>
+    <span class="pill">📁 <b>走在</b> · 14 轨</span>
+    <span class="pill">Eb · 68 BPM · 52 小节</span>
+    <div class="spacer"></div>
+    <span class="status-pill"><span class="dot"></span> 已连接</span>
+  </div>
+
+  <div class="daw">
+    <!-- ===== MIX / TRACKS ===== -->
+    <div class="mix-pane">
+      <div class="mix-head">
+        <span class="t">🎚 分轨混音</span>
+        <span class="spacer"></span>
+        <div class="master">主音量 <input type="range" min="0" max="100" value="82" id="masterVol"><span id="masterV" style="font-family:var(--mono);font-size:11px;color:var(--txt-3)">82</span></div>
+      </div>
+      <div class="mix-body" id="mixBody"></div>
+    </div>
+
+    <!-- ===== NOTE EDITOR ===== -->
+    <div class="editor-pane">
+      <div class="ed-head">
+        <span class="t" id="edTrackName">02_主唱</span>
+        <span class="sub" id="edTrackSub">Sopranos · 人声轨</span>
+        <span class="spacer"></span>
+        <button class="btn sm">⊞ 量化 1/16</button>
+        <button class="btn sm on">🧲 吸附</button>
+        <button class="btn sm">✂ 在播放头分割</button>
+        <button class="btn sm primary">▶ 试听选中</button>
+      </div>
+      <div class="ed-body">
+        <div class="roll-wrap">
+          <div class="roll-toolbar">
+            <span>🎹 钢琴卷帘</span>
+            <span style="color:var(--txt-3)">· 拖动音符改音高，点选音符编辑属性</span>
+            <span class="spacer"></span>
+            <span id="rollInfo" style="font-family:var(--mono)"></span>
+          </div>
+          <div class="pianoroll">
+            <div class="pr-ruler" id="prRuler"></div>
+            <div class="pr-view" id="prView">
+              <div class="pr-canvas" id="prCanvas">
+                <div class="playhead" id="playhead" style="left:0"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="inspector" id="inspector"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"><span class="ic">✓</span><span id="toastMsg"></span></div>
+
+<script>
+/* ============ DATA ============ */
+const NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function midiName(n){return NAMES[n%12]+(Math.floor(n/12)-1);}
+function isBlack(n){return [1,3,6,8,10].includes(n%12);}
+function velColor(v){ // amber -> primary
+  const t=Math.max(0,Math.min(1,v/127));
+  const a=[245,158,11], b=[109,94,252];
+  const c=a.map((x,i)=>Math.round(x+(b[i]-x)*t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+const BEAT_W=40, ROW_H=15, RULER_W=46;
+
+// tracks with DAW fields
+const tracks=[
+  {id:'01',name:'吉他',type:'instr',timbre:'Acoustic Steel Plucked',uid:'13012',mute:false,solo:false,vol:78,vel:62,notes:[]},
+  {id:'02',name:'主唱',type:'vocal',timbre:'Sopranos',voice:'Sopranos',tension:0,breath:22,gender:-8,mute:false,solo:false,vol:85,vel:88,
+   notes:[
+     {p:60,d:1,s:0,v:84,lyric:'走',ph:[{s:'z',d:42},{s:'ou',d:58}]},
+     {p:62,d:1,s:1,v:86,lyric:'在',ph:[{s:'z',d:38},{s:'ai',d:62}]},
+     {p:64,d:1.5,s:2,v:90,lyric:'街',ph:[{s:'j',d:35},{s:'ie',d:65}]},
+     {p:65,d:0.5,s:3.5,v:80,lyric:'头',ph:[{s:'t',d:40},{s:'ou',d:60}]},
+     {p:67,d:1,s:4,v:88,lyric:'的',ph:[{s:'d',d:45},{s:'e',d:55}]},
+     {p:69,d:1,s:5,v:92,lyric:'夜',ph:[{s:'y',d:30},{s:'e',d:70}]},
+     {p:67,d:2,s:6,v:86,lyric:'里',ph:[{s:'l',d:40},{s:'i',d:60}]},
+     {p:64,d:1,s:8,v:84,lyric:'风',ph:[{s:'f',d:35},{s:'eng',d:65}]},
+     {p:62,d:1,s:9,v:82,lyric:'吹',ph:[{s:'ch',d:30},{s:'ui',d:70}]},
+     {p:60,d:2,s:10,v:80,lyric:'过',ph:[{s:'g',d:40},{s:'uo',d:60}]},
+   ]},
+  {id:'05',name:'solo吉他主',type:'instr',timbre:'Acoustic Steel Picked',uid:'13011',mute:false,solo:false,vol:70,vel:55,notes:[]},
+  {id:'06',name:'solo吉他辅1',type:'instr',timbre:'Electric LP - Clean',uid:'13014',mute:true,solo:false,vol:64,vel:50,notes:[]},
+  {id:'08',name:'节奏吉他',type:'instr',timbre:'Acoustic Nylon',uid:'13010',mute:false,solo:false,vol:72,vel:60,
+   notes:[ // strums: 5-note blocks every beat
+     ...[0,1,2,3,4,5,6,7].flatMap(b=>[40,45,50,55,59].map((p,i)=>({p,d:0.85,s:b,v:58-i*2}))),
+   ]},
+  {id:'09',name:'和声',type:'vocal',timbre:'Altos',voice:'Altos',tension:-10,breath:30,gender:20,mute:false,solo:false,vol:68,vel:70,notes:[]},
+  {id:'10',name:'氛围垫音pad',type:'instr',timbre:'Violins 2',uid:'92',mute:false,solo:false,vol:55,vel:45,notes:[]},
+  {id:'12',name:'泛音环境点缀',type:'instr',timbre:'Acoustic Nylon',uid:'13010',mute:false,solo:false,vol:50,vel:48,notes:[]},
+  {id:'13',name:'轻贝斯',type:'instr',timbre:'Electric Bass',uid:'13013',mute:false,solo:false,vol:80,vel:75,
+   notes:[{p:40,d:1,s:0,v:78},{p:43,d:1,s:1,v:76},{p:45,d:1,s:2,v:80},{p:40,d:1,s:3,v:78},{p:43,d:1,s:4,v:76},{p:45,d:2,s:5,v:80}]},
+  {id:'14',name:'slap',type:'drum',timbre:'Marching Tenors',uid:'80',mute:false,solo:false,vol:76,vel:82,
+   notes:[{p:74,d:0.5,s:0,v:85},{p:74,d:0.5,s:1,v:80},{p:74,d:0.5,s:2,v:82},{p:74,d:0.5,s:3,v:78},{p:74,d:0.5,s:4,v:84},{p:74,d:0.5,s:5,v:80}]},
+];
+
+let curTrackId='02';
+let selNote=-1;
+const TOTAL_BEATS=12;
+
+/* ============ MIX VIEW ============ */
+function renderMix(){
+  const body=document.getElementById('mixBody'); body.innerHTML='';
+  const anySolo=tracks.some(t=>t.solo);
+  tracks.forEach(t=>{
+    const dim=anySolo&&!t.solo;
+    const lane=document.createElement('div');
+    lane.className='lane'+(t.id===curTrackId?' sel':'')+(dim?' dim':'');
+    // notes blocks
+    let blocks='';
+    if(t.notes.length){
+      t.notes.forEach((n,i)=>{
+        const left=n.s*BEAT_W+4, w=Math.max(10,n.d*BEAT_W-4);
+        blocks+=`<div class="nb" style="left:${left}px;width:${w}px;background:${velColor(n.v)}">${t.type==='vocal'&&n.lyric?n.lyric:midiName(n.p)}</div>`;
+      });
+    } else {
+      blocks=`<div class="empty">— 无片段 —</div>`;
+    }
+    lane.innerHTML=`
+      <div class="lane-head" data-id="${t.id}">
+        <div class="row1">
+          <div class="idx">${t.id}</div>
+          <div class="nm">${t.name}</div>
+        </div>
+        <div class="ms-btns">
+          <button class="ms m ${t.mute?'on':''}" data-act="mute">M</button>
+          <button class="ms s ${t.solo?'on':''}" data-act="solo">S</button>
+          <span class="timbre ${t.type}">${t.timbre}</span>
+        </div>
+        <div class="vol-row"><label>音量</label>
+          <input type="range" min="0" max="100" value="${t.vol}" data-act="vol">
+          <span class="vv">${t.vol}</span></div>
+        <div class="vel-meter"><i style="width:${Math.round(t.vel/127*100)}%"></i></div>
+      </div>
+      <div class="lane-tl" data-id="${t.id}">${blocks}</div>`;
+    // events
+    lane.querySelector('.lane-head').onclick=(e)=>{
+      if(e.target.closest('[data-act]')) return;
+      selectTrack(t.id);
+    };
+    lane.querySelector('.lane-tl').onclick=()=>selectTrack(t.id);
+    lane.querySelectorAll('[data-act]').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        const act=btn.dataset.act;
+        if(act==='mute') t.mute=!t.mute;
+        else if(act==='solo') t.solo=!t.solo;
+        else if(act==='vol'){t.vol=+btn.value; btn.nextElementSibling.textContent=t.vol;}
+        renderMix();
+        if(act==='mute'||act==='solo') toast(`${t.id}_${t.name} ${act==='mute'?(t.mute?'已静音':'取消静音'):(t.solo?'独奏':'取消独奏')}`);
+      };
+    });
+    body.appendChild(lane);
+  });
+}
+
+/* ============ SELECT TRACK ============ */
+function selectTrack(id){
+  curTrackId=id; selNote=-1;
+  const t=tracks.find(x=>x.id===id);
+  document.getElementById('edTrackName').textContent=id+'_'+t.name;
+  const typeTxt=t.type==='vocal'?'人声轨':t.type==='drum'?'打击乐轨':'乐器轨';
+  document.getElementById('edTrackSub').textContent=`${t.timbre} · ${typeTxt}`;
+  renderMix(); renderRoll(); renderInspector();
+}
+
+/* ============ PIANO ROLL ============ */
+function renderRoll(){
+  const t=tracks.find(x=>x.id===curTrackId);
+  const ruler=document.getElementById('prRuler');
+  const canvas=document.getElementById('prCanvas');
+  // pitch range
+  let minP=60,maxP=72;
+  if(t.notes.length){minP=Math.min(...t.notes.map(n=>n.p));maxP=Math.max(...t.notes.map(n=>n.p));}
+  minP=Math.max(24,minP-3); maxP=Math.min(96,maxP+3);
+  const range=maxP-minP+1;
+  const h=range*ROW_H;
+  const w=RULER_W+TOTAL_BEATS*BEAT_W;
+  // ruler
+  ruler.innerHTML=''; ruler.style.height=h+'px';
+  for(let p=maxP;p>=minP;p--){
+    const rk=document.createElement('div');
+    rk.className='rk'+(isBlack(p)?' black':'');
+    rk.style.top=((maxP-p)*ROW_H+ROW_H/2)+'px';
+    rk.textContent=isBlack(p)?'':midiName(p);
+    ruler.appendChild(rk);
+  }
+  // canvas
+  canvas.style.height=h+'px'; canvas.style.width=w+'px';
+  canvas.innerHTML='<div class="playhead" id="playhead" style="left:'+(RULER_W)+'px"></div>';
+  // horizontal grid (per pitch)
+  for(let p=maxP;p>=minP;p--){
+    const g=document.createElement('div');
+    g.className='hgrid'+(isBlack(p)?' black':'');
+    g.style.top=((maxP-p)*ROW_H)+'px';
+    canvas.appendChild(g);
+  }
+  // bar lines
+  for(let b=0;b<=TOTAL_BEATS;b+=4){
+    const bl=document.createElement('div'); bl.className='barline';
+    bl.style.left=(RULER_W+b*BEAT_W)+'px'; canvas.appendChild(bl);
+  }
+  // notes
+  t.notes.forEach((n,i)=>{
+    const note=document.createElement('div');
+    note.className='note'+(i===selNote?' sel':'');
+    note.style.left=(RULER_W+n.s*BEAT_W+1)+'px';
+    note.style.width=Math.max(12,n.d*BEAT_W-3)+'px';
+    note.style.top=((maxP-n.p)*ROW_H+1)+'px';
+    note.style.height=(ROW_H-2)+'px';
+    note.style.background=velColor(n.v);
+    note.innerHTML=`<span class="lbl">${t.type==='vocal'&&n.lyric?n.lyric:midiName(n.p)}</span>`;
+    note.dataset.i=i;
+    note.onmousedown=(e)=>startDrag(e,note,i);
+    note.onclick=(e)=>{e.stopPropagation();selNote=i;renderRoll();renderInspector();};
+    canvas.appendChild(note);
+  });
+  document.getElementById('rollInfo').textContent=`音域 ${midiName(minP)}–${midiName(maxP)} · ${t.notes.length} 音符`;
+  canvas.onclick=(e)=>{ if(e.target===canvas){selNote=-1;renderRoll();renderInspector();} };
+}
+
+/* drag to change pitch */
+let drag=null;
+function startDrag(e,noteEl,i){
+  e.stopPropagation();
+  const t=tracks.find(x=>x.id===curTrackId);
+  const n=t.notes[i];
+  let maxP=60,minP=72;
+  if(t.notes.length){maxP=Math.max(...t.notes.map(x=>x.p));minP=Math.min(...t.notes.map(x=>x.p));}
+  maxP=Math.min(96,maxP+3); minP=Math.max(24,minP-3);
+  drag={i,startY:e.clientY,origP:n.p,minP,maxP};
+  window.addEventListener('mousemove',onDrag);
+  window.addEventListener('mouseup',endDrag);
+}
+function onDrag(e){
+  if(!drag) return;
+  const delta=Math.round((drag.startY-e.clientY)/ROW_H);
+  let np=drag.origP+delta;
+  np=Math.max(drag.minP,Math.min(drag.maxP,np));
+  const t=tracks.find(x=>x.id===curTrackId);
+  t.notes[drag.i].p=np;
+  const noteEl=document.querySelector('.note[data-i="'+drag.i+'"]');
+  if(noteEl){
+    const curMax=Math.max(...t.notes.map(x=>x.p)); const curMin=Math.min(...t.notes.map(x=>x.p));
+    const topLocal=(newMax)=>((newMax-np)*ROW_H+1);
+    // recompute against current max
+    const maxP=Math.max(...t.notes.map(x=>x.p))+3;
+    noteEl.style.top=((maxP-np)*ROW_H+1)+'px';
+    noteEl.querySelector('.lbl').textContent=t.type==='vocal'&&t.notes[drag.i].lyric?t.notes[drag.i].lyric:midiName(np);
+  }
+}
+function endDrag(){
+  if(drag){ const i=drag.i; drag=null; selNote=i; renderRoll(); renderInspector(); toast('已改音高（原型演示，未回写 JSON）'); }
+  window.removeEventListener('mousemove',onDrag);
+  window.removeEventListener('mouseup',endDrag);
+}
+
+/* ============ INSPECTOR ============ */
+function renderInspector(){
+  const t=tracks.find(x=>x.id===curTrackId);
+  const ins=document.getElementById('inspector');
+  if(selNote<0||!t.notes[selNote]){
+    ins.innerHTML=`<div class="insp-h"><span class="ic">🎛</span> 检查器</div>
+      <div class="insp-sub">${t.type==='vocal'?'人声轨':'乐器轨'} · 点选一个音符编辑属性</div>
+      <div class="empty-note"><div class="big">🎹</div>未选中音符<br><span style="font-size:11.5px">在钢琴卷帘里点一个音符，<br>或拖动它修改音高</span></div>
+      ${t.type==='vocal'?vocalConfigHTML(t):instrConfigHTML(t)}`;
+    return;
+  }
+  const n=t.notes[selNote];
+  const isVocal=t.type==='vocal';
+  ins.innerHTML=`
+    <div class="insp-h"><span class="ic">🎛</span> 音符 #${selNote+1}</div>
+    <div class="insp-sub">${midiName(n.p)} · 第 ${n.s.toFixed(1)} 拍起 · 时值 ${n.d.toFixed(1)} 拍</div>
+
+    <div class="sec-t">♪ 音高 / 时值</div>
+    <div class="field"><label>音高</label><input type="text" value="${midiName(n.p)}" id="fPitch" readonly>
+      <span class="unit">MIDI ${n.p}</span></div>
+    <div class="field"><label>起拍</label><input type="number" step="0.5" value="${n.s}" id="fStart"><span class="unit">beat</span></div>
+    <div class="field"><label>时值</label><input type="number" step="0.25" value="${n.d}" id="fDur"><span class="unit">beat</span></div>
+    <div class="slider-row"><div class="sl"><span>力度 Velocity</span><b id="fVelV">${n.v}</b></div>
+      <input type="range" min="0" max="127" value="${n.v}" id="fVel"></div>
+
+    ${isVocal?`
+    <div class="sec-t">🗣 歌词 / 音素</div>
+    <div class="field"><label>歌词</label><input type="text" value="${n.lyric||''}" id="fLyric"></div>
+    <div class="sl" style="font-size:11px;color:var(--txt-3);margin-bottom:6px">音素 (phoneme) · 拖动右侧滑块调 <b>ph_dur</b> 占比</div>
+    <div class="ph-list" id="phList">${phRowsHTML(n)}</div>
+    <button class="add-ph" id="addPh">＋ 添加音素</button>
+    <div class="sec-t">🔧 对齐 / 分段</div>
+    <div class="field"><label>对齐</label>
+      <select id="fAlign"><option>自动 (Auto)</option><option>吸附网格</option><option>手动 (Manual)</option></select></div>
+    <button class="split-btn" id="splitBtn">✂ 在音符中点分段</button>
+    `:`
+    <div class="sec-t">🎸 演奏技法</div>
+    <div class="field"><label>技法</label>
+      <select id="fArtic"><option>${t.timbre.includes('Nylon')||t.timbre.includes('Steel')?'勾弦':'拨奏'}</option>
+      <option>琶音</option><option>柱式和弦</option><option>滑音</option></select></div>
+    <div class="field"><label>音色 UID</label><input type="text" value="${t.uid||''}" readonly></div>
+    `}
+
+    ${isVocal?vocalConfigHTML(t):instrConfigHTML(t)}
+  `;
+  // bind
+  document.getElementById('fStart').onchange=e=>{n.s=+e.target.value;renderRoll();toast('起拍已改');};
+  document.getElementById('fDur').onchange=e=>{n.d=Math.max(0.25,+e.target.value);renderRoll();toast('时值已改');};
+  document.getElementById('fVel').oninput=e=>{n.v=+e.target.value;document.getElementById('fVelV').textContent=n.v;renderRoll();};
+  if(isVocal){
+    document.getElementById('fLyric').oninput=e=>{n.lyric=e.target.value;renderRoll();};
+    bindPh();
+    document.getElementById('addPh').onclick=()=>{n.ph.push({s:'-',d:20});renderInspector();renderRoll();};
+    document.getElementById('splitBtn').onclick=()=>splitNote();
+  }
+}
+function phRowsHTML(n){
+  if(!n.ph||!n.ph.length) return `<div class="ph-row" style="color:var(--txt-3);font-size:11px">（无音素，点下方添加）</div>`;
+  return n.ph.map((p,i)=>`<div class="ph-row" data-i="${i}">
+    <span class="ph-idx">${i+1}</span>
+    <input class="sym" value="${p.s}" data-i="${i}">
+    <div class="durwrap"><input type="range" min="5" max="95" value="${p.d}" data-i="${i}"></div>
+    <span class="durv">${p.d}%</span>
+    <span class="del" data-del="${i}">✕</span></div>`).join('');
+}
+function bindPh(){
+  document.querySelectorAll('.ph-row input.sym').forEach(inp=>{
+    inp.oninput=e=>{const i=+e.target.dataset.i;const n=tracks.find(x=>x.id===curTrackId).notes[selNote];n.ph[i].s=e.target.value;};
+  });
+  document.querySelectorAll('.ph-row input[type=range]').forEach(inp=>{
+    inp.oninput=e=>{const i=+e.target.dataset.i;const n=tracks.find(x=>x.id===curTrackId).notes[selNote];
+      n.ph[i].d=+e.target.value;e.target.closest('.ph-row').querySelector('.durv').textContent=n.ph[i].d+'%';};
+  });
+  document.querySelectorAll('.ph-row .del').forEach(d=>{
+    d.onclick=()=>{const i=+d.dataset.del;const n=tracks.find(x=>x.id===curTrackId).notes[selNote];n.ph.splice(i,1);renderInspector();renderRoll();};
+  });
+}
+function vocalConfigHTML(t){
+  return `<div class="sec-t">🎤 歌手配置</div>
+    <div class="field"><label>声库</label>
+      <select><option ${t.voice==='Sopranos'?'selected':''}>Sopranos</option><option ${t.voice==='Altos'?'selected':''}>Altos</option><option>Tenor</option><option>Custom_VC</option></select></div>
+    <div class="slider-row"><div class="sl"><span>张力 Tension</span><b>${t.tension}</b></div>
+      <input type="range" min="-100" max="100" value="${t.tension}"></div>
+    <div class="slider-row"><div class="sl"><span>气声 Breath</span><b>${t.breath}</b></div>
+      <input type="range" min="0" max="100" value="${t.breath}"></div>
+    <div class="slider-row"><div class="sl"><span>性别 Gender</span><b>${t.gender}</b></div>
+      <input type="range" min="-100" max="100" value="${t.gender}"></div>`;
+}
+function instrConfigHTML(t){
+  return `<div class="sec-t">🎚 轨道配置</div>
+    <div class="field"><label>乐器</label><input type="text" value="${t.timbre}" readonly></div>
+    <div class="slider-row"><div class="sl"><span>音量 Volume</span><b>${t.vol}</b></div>
+      <input type="range" min="0" max="100" value="${t.vol}"></div>
+    <div class="field"><label>静音</label><input type="checkbox" ${t.mute?'checked':''} disabled></div>`;
+}
+function splitNote(){
+  const t=tracks.find(x=>x.id===curTrackId);
+  const n=t.notes[selNote];
+  if(n.d<0.5){toast('音符太短，无法分段');return;}
+  const half=n.d/2;
+  const phMid=n.ph?Math.ceil(n.ph.length/2):0;
+  const n1={...n,d:half,ph:n.ph?n.ph.slice(0,phMid):undefined};
+  const n2={...n,s:n.s+half,d:half,ph:n.ph?n.ph.slice(phMid):undefined};
+  t.notes.splice(selNote+1,0,n2);
+  t.notes[selNote]=n1;
+  selNote=selNote+1;
+  renderRoll();renderInspector();toast('已在中点分段（原型演示）');
+}
+
+/* ============ misc ============ */
+function toast(msg){
+  const t=document.getElementById('toast');document.getElementById('toastMsg').textContent=msg;
+  t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1700);
+}
+document.getElementById('masterVol').oninput=e=>{document.getElementById('masterV').textContent=e.target.value;};
+
+/* init */
+renderMix(); renderRoll(); renderInspector();
+</script>
+</body>
+</html>

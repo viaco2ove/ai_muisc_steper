@@ -15,6 +15,7 @@ from .project_manager import ProjectManager
 SYSTEM_PROMPT = """你是音乐创作调度助手，可调用本地音乐技能完成歌曲制作。
 
 ## 可用技能清单与入参规范
+init_project: {--name(工程名,required), --style(风格), --bpm(BPM数字), --key(调性)}  新建音乐工程(初始化目录结构)。用户说"建立/新建音乐工程/创建工程"时用此技能。
 audio_chord_recognizer: {input(音频文件绝对路径,required)}  哼唱->BPM/调性/和弦/旋律MIDI
 ai_chords_master: {--title(歌曲名), --progression(基础和弦逗号分隔,required)}  生成完整段落和弦进行
 openutau_lyrics: {--project(歌曲名,required), --midi(MIDI文件名,required)}  输出OpenUTAU逐音符歌词txt
@@ -90,9 +91,14 @@ class LLMAgent:
         if task and task.get("need_tool"):
             await self._run_chain(task["task_chain"], project, ws_send)
         else:
-            # 纯文字正文，整段推(已流式过思考，正文一次性发)
-            if ws_send:
-                await ws_send({"type": "text", "msg": resp, "stream": True, "done": True})
+            # LLM 兜底: 关键词检测，主动触发 init_project
+            kw_task = self._kw_match_task(user_msg, project)
+            if kw_task:
+                await self._run_chain(kw_task, project, ws_send)
+            else:
+                # 纯文字正文，整段推(已流式过思考，正文一次性发)
+                if ws_send:
+                    await ws_send({"type": "text", "msg": resp, "stream": True, "done": True})
 
     def _build_user_content(self, user_msg, ctx, history, audio_path):
         parts = [ctx, "", f"【历史对话】"]
@@ -119,6 +125,28 @@ class LLMAgent:
         except Exception:
             return None
 
+    def _kw_match_task(self, msg: str, current_project: str) -> Optional[list]:
+        """关键词兜底: 当 LLM 没识别出工具时，主动匹配"""
+        # 建立/新建/创建工程
+        if any(k in msg for k in ["建立", "新建", "创建", "init"]):
+            import re
+            # 尝试提取工程名 (在/的/这个目录/等后取最后一个非空 token)
+            m = re.search(r'(?:建立|新建|创建|init)\s*(?:个|一个|一个)?\s*(?:叫|名为)?\s*[为]?\s*[\"\'\"]?([^\s，,。\"\'\"]+)', msg)
+            if not m:
+                # 取路径最后一段作为工程名
+                m = re.search(r'[/\\]([^/\\\s，,。\"\'\"]+?)(?:[/\\]|\s|$|这个|此)', msg)
+            name = m.group(1).strip() if m else (current_project or "新工程")
+            # 路径风格的名字取最后一段
+            if "/" in name or "\\" in name:
+                name = name.replace("\\", "/").split("/")[-1]
+            if not name or name in ["这个", "此", "这个目录", "音乐工程"]:
+                name = current_project or "新工程"
+            return [{"tool": "init_project", "args": {"--name": name}}]
+        # 分析哼唱
+        if any(k in msg for k in ["分析", "哼唱", "扒", "chord"]):
+            return [{"tool": "audio_chord_recognizer", "args": {}}]
+        return None
+
     async def _run_chain(self, task_chain: list, project: str, ws_send):
         """串行执行任务链。可执行技能走 subprocess, 纯提示词技能走对应模型 LLM"""
         if ws_send:
@@ -136,7 +164,28 @@ class LLMAgent:
             if ws_send:
                 await ws_send({"type": "log", "tool": tool, "msg": f"▶ 开始执行 {tool}"})
 
-            if is_executable:
+            # 特殊处理: init_project 直接调 ProjectManager，不走 subprocess
+            if tool == "init_project":
+                try:
+                    name = args.get("--name") or args.get("name") or args.get("--project") or project
+                    style = args.get("--style") or args.get("style", "")
+                    bpm = args.get("--bpm") or args.get("bpm", 0)
+                    key = args.get("--key") or args.get("key", "")
+                    if not name:
+                        raise ValueError("init_project 需要 --name 参数")
+                    result = self.pm.init_project(name, style, int(bpm) if str(bpm).isdigit() else 0, key)
+                    status = "ok"
+                    files = []
+                    err = None
+                    if ws_send:
+                        await ws_send({"type": "log", "tool": tool,
+                                       "msg": f"已创建工程: {name}"})
+                except Exception as e:
+                    status = "error"
+                    files = []
+                    err = str(e)
+                # 跳过后续 subprocess 分支
+            elif is_executable:
                 # 可执行技能: subprocess
                 if project and "project" not in args and "--project" not in args:
                     if any(k in str(skill_meta.get("params", {})).lower() for k in ["--project", "project"]):
