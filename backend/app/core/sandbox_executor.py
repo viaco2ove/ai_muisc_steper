@@ -57,6 +57,8 @@ class SandboxExecutor:
         script_path = Path(skill.skill_dir) / entry
         if not script_path.exists():
             return StepResult(status="error", error_stack=f"入口脚本不存在: {script_path}")
+        # 使用绝对路径，避免 cwd 切换导致相对路径失效
+        script_path = script_path.resolve()
 
         # 1. args → 临时 JSON 文件 (与 wrapper 同目录, 保证相对路径能找到)
         tmp_dir = tempfile.mkdtemp(prefix='panel_sandbox_', dir='.')

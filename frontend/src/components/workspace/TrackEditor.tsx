@@ -3,18 +3,21 @@ import { useState, useEffect, useRef } from 'react'
 interface TrackEditorProps {
   trackId: string
   initialMd?: string
-  onSave?: (md: string) => void
+  onSave?: (md: string) => void | Promise<void>
+  saveState?: 'idle' | 'saving' | 'saved' | 'error'
   readonly?: boolean
 }
 
-export default function TrackEditor({ trackId, initialMd = '', onSave, readonly = false }: TrackEditorProps) {
+export default function TrackEditor({ trackId, initialMd = '', onSave, saveState = 'idle', readonly = false }: TrackEditorProps) {
   const [md, setMd] = useState(initialMd)
   const [saved, setSaved] = useState(true)
+  const [saving, setSaving] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setMd(initialMd)
     setSaved(true)
+    setSaving(false)
   }, [trackId, initialMd])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -22,9 +25,16 @@ export default function TrackEditor({ trackId, initialMd = '', onSave, readonly 
     setSaved(false)
   }
 
-  const handleSave = () => {
-    onSave?.(md)
-    setSaved(true)
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave?.(md)
+      setSaved(true)
+    } catch {
+      setSaved(false)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -34,16 +44,30 @@ export default function TrackEditor({ trackId, initialMd = '', onSave, readonly 
     }
   }
 
+  const badge =
+    saveState === 'saving' || saving
+      ? { text: '保存中…', cls: 'text-blue-500' }
+      : saveState === 'error'
+      ? { text: '保存失败', cls: 'text-red-500' }
+      : saveState === 'saved'
+      ? { text: '已保存', cls: 'text-green-500' }
+      : !saved
+      ? { text: '未保存', cls: 'text-yellow-500' }
+      : { text: '已保存', cls: 'text-green-500' }
+
   return (
     <div className="border rounded-lg p-4 flex flex-col h-full">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-medium text-gray-700">MD编辑器 - {trackId}</h3>
-        <div className="flex gap-2">
-          {!saved && <span className="text-xs text-yellow-500">未保存</span>}
-          {saved && <span className="text-xs text-green-500">已保存</span>}
+        <div className="flex gap-2 items-center">
+          <span className={`text-xs ${badge.cls}`}>{badge.text}</span>
           {!readonly && (
-            <button onClick={handleSave} className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600">
-              保存
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? '保存中…' : '保存'}
             </button>
           )}
         </div>

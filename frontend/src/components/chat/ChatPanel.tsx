@@ -3,9 +3,10 @@ import { useProjectStore } from '../../store/projectStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useAudioRecorder } from '../../hooks/useAudioRecorder'
 import { uploadAudio } from '../../services/api'
+import ToolCallCard from './ToolCallCard'
 
 export default function ChatPanel() {
-  const { chat, audioPath, setAudioPath, currentProject } = useProjectStore()
+  const { chat, audioPath, setAudioPath, currentProject, addChat } = useProjectStore()
   const { sendChat } = useWebSocket()
   const { recording, audioBlob, start, stop, reset } = useAudioRecorder()
   const [input, setInput] = useState('')
@@ -32,10 +33,13 @@ export default function ChatPanel() {
 
   const handleSend = () => {
     if (!input.trim()) return
+    // P0-2: 乐观插入用户消息，立即进列表（hook 的 sendChat 只负责传输）
+    addChat({ role: 'user', msg: input, files: audioPath ? [audioPath] : undefined })
     sendChat(input, audioPath || undefined, currentProject || undefined)
     setInput('')
     setAudioPath(null)
   }
+
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -67,9 +71,9 @@ export default function ChatPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
       {/* Top toolbar */}
-      <div className="flex gap-2 p-3 border-b bg-white">
+      <div className="flex gap-2 p-3 border-b bg-white dark:bg-gray-800 dark:border-gray-700">
         <button
           onClick={handleRecord}
           className={`px-3 py-1.5 rounded-md text-sm transition ${
@@ -115,14 +119,14 @@ export default function ChatPanel() {
       </div>
 
       {/* Input area */}
-      <div className="p-3 border-t bg-white">
+      <div className="p-3 border-t bg-white dark:bg-gray-800 dark:border-gray-700">
         <div className="flex gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入消息... (Enter发送)"
-            className="flex-1 resize-none border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="flex-1 resize-none border rounded-md px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
             rows={2}
           />
           <button
@@ -147,7 +151,7 @@ function MessageBubble({ message }: { message: { id: string; role: string; msg: 
     return (
       <details className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" open>
         <summary className="text-xs text-amber-700 cursor-pointer select-none flex items-center gap-1">
-          <span>💭</span><span>思考过程</span>
+          <span>💭</span><span>AI思考过程</span>
         </summary>
         <p className="text-xs text-amber-800 whitespace-pre-wrap mt-1 max-h-60 overflow-y-auto">{msg}</p>
       </details>
@@ -159,6 +163,41 @@ function MessageBubble({ message }: { message: { id: string; role: string; msg: 
       <div className="flex items-start gap-2">
         <span className="text-xs text-gray-400 mt-1 shrink-0">[LOG]</span>
         <p className="text-xs text-gray-400 whitespace-pre-wrap">{msg}</p>
+      </div>
+    )
+  }
+
+  if (role === 'observation') {
+    // 技能执行观察结果
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-blue-600 text-xs">
+          <span>📋</span>
+          <span className="font-medium">执行结果</span>
+        </div>
+        <p className="text-xs text-blue-700 whitespace-pre-wrap mt-1 max-h-40 overflow-y-auto">{msg}</p>
+      </div>
+    )
+  }
+
+  if (role === 'artifact') {
+    // 生成的文件
+    return (
+      <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-purple-600 text-xs">
+          <span>📁</span>
+          <span className="font-medium">生成文件</span>
+        </div>
+        {msg && <p className="text-xs text-purple-700 mt-1">{msg}</p>}
+        {files && files.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {files.map((f, i) => (
+              <div key={i} className="text-xs text-purple-600 bg-purple-100 rounded px-2 py-1 truncate">
+                {f.split(/[/\\]/).pop()}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
@@ -190,10 +229,21 @@ function MessageBubble({ message }: { message: { id: string; role: string; msg: 
     )
   }
 
+  if (role === 'tool_call') {
+    // D3/D4/D6：AI 调整的回滚 preview 卡片
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[88%]">
+          <ToolCallCard message={message} />
+        </div>
+      </div>
+    )
+  }
+
   // assistant
   return (
     <div className="flex justify-start">
-      <div className="bg-white border rounded-lg px-4 py-2 max-w-[80%] shadow-sm">
+      <div className="bg-white border rounded-lg px-4 py-2 max-w-[80%] shadow-sm text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
         <p className="text-sm whitespace-pre-wrap">{msg}</p>
       </div>
     </div>

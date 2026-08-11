@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ChatRole = 'user' | 'assistant' | 'log' | 'skill_done' | 'reasoning'
+export type ChatRole = 'user' | 'assistant' | 'log' | 'skill_done' | 'reasoning' | 'observation' | 'artifact' | 'tool_call'
 export type WsStatus = 'idle' | 'connected' | 'running'
 
 export interface ChatMessage {

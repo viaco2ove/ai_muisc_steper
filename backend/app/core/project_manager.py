@@ -109,6 +109,153 @@ class ProjectManager:
                 return f
         return None
 
+    # ---------------------------------------------------------------- 删除/重命名
+    def delete_project(self, name: str) -> dict:
+        """删除工程目录"""
+        pdir = self.pdir / name
+        if not pdir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        import shutil
+        shutil.rmtree(pdir)
+        return {"status": "ok", "deleted": name}
+
+    def rename_project(self, name: str, new_name: str) -> dict:
+        """重命名工程目录"""
+        old_dir = self.pdir / name
+        new_dir = self.pdir / new_name
+        if not old_dir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        if new_dir.exists():
+            raise FileExistsError(f"目标名称已存在: {new_name}")
+        old_dir.rename(new_dir)
+        return {"status": "ok", "old": name, "new": new_name}
+
+    # ---------------------------------------------------------------- Track CRUD
+    def list_tracks(self, name: str) -> list:
+        """列出工程的所有轨道"""
+        pdir = self.pdir / name
+        if not pdir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        track_dir = pdir / "song_engineer" / "track"
+        if not track_dir.exists():
+            return []
+        tracks = []
+        for jf in sorted(track_dir.glob("*.json")):
+            try:
+                tj = json.loads(jf.read_text(encoding="utf-8"))
+                tracks.append({
+                    "id": str(tj.get("track_id", jf.stem)),
+                    "name": tj.get("name", jf.stem),
+                    "role": tj.get("role", ""),
+                    "status": tj.get("status", ""),
+                    "type": tj.get("type", ""),
+                    "instrument": tj.get("instrument", ""),
+                    "volume": tj.get("volume", 0.8),
+                    "muted": tj.get("muted", False),
+                })
+            except Exception:
+                pass
+        return tracks
+
+    def create_track(self, name: str, track_data: dict) -> dict:
+        """创建新轨道"""
+        pdir = self.pdir / name
+        if not pdir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        track_dir = pdir / "song_engineer" / "track"
+        track_dir.mkdir(parents=True, exist_ok=True)
+
+        track_id = track_data.get("id", "{:02d}_新建轨道".format(len(list(track_dir.glob('*.json'))) + 1))
+        track_name = track_data.get("name", "新建轨道")
+
+        # 生成 track json
+        tj = {
+            "track_id": track_id,
+            "name": track_name,
+            "role": track_data.get("role", ""),
+            "status": "草稿",
+            "type": track_data.get("type", "乐器"),
+            "instrument": track_data.get("instrument", ""),
+            "volume": track_data.get("volume", 0.8),
+            "muted": False,
+            "sections": [],
+            "notes": [],
+        }
+
+        jf = track_dir / f"{track_id}.json"
+        jf.write_text(json.dumps(tj, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # 生成 track md
+        md_content = f"""# 轨道: {track_name}
+
+## 基本信息
+| 字段 | 值 |
+|------|-----|
+| 轨道ID | {track_id} |
+| 类型 | {tj['type']} |
+| 状态 | {tj['status']} |
+| 音色 | {tj['instrument']} |
+
+## 段落参与
+（待填写）
+
+## 音符数据
+（暂无）
+"""
+        md_path = track_dir / f"{track_id}.md"
+        md_path.write_text(md_content, encoding="utf-8")
+
+        return {"status": "ok", "track_id": track_id, "path": str(jf)}
+
+    def delete_track(self, name: str, track_id: str) -> dict:
+        """删除轨道"""
+        pdir = self.pdir / name
+        if not pdir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        track_dir = pdir / "song_engineer" / "track"
+        if not track_dir.exists():
+            raise FileNotFoundError("轨道目录不存在")
+
+        # 查找轨道文件
+        files = list(track_dir.glob(f"{track_id}.*"))
+        if not files:
+            # 尝试前缀匹配
+            files = [f for f in track_dir.glob("*.json") if f.stem.startswith(track_id) or f.stem == track_id]
+        if not files:
+            raise FileNotFoundError(f"轨道不存在: {track_id}")
+
+        for f in files:
+            f.unlink()
+
+        return {"status": "ok", "deleted": track_id, "files": [str(f) for f in files]}
+
+    def update_track(self, name: str, track_id: str, updates: dict) -> dict:
+        """更新轨道信息"""
+        pdir = self.pdir / name
+        if not pdir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        track_dir = pdir / "song_engineer" / "track"
+        if not track_dir.exists():
+            raise FileNotFoundError("轨道目录不存在")
+
+        # 查找轨道文件
+        jf = None
+        for f in track_dir.glob("*.json"):
+            if f.stem == track_id or f.stem.startswith(track_id):
+                jf = f
+                break
+        if not jf:
+            raise FileNotFoundError(f"轨道不存在: {track_id}")
+
+        # 读取并更新
+        tj = json.loads(jf.read_text(encoding="utf-8"))
+        for k, v in updates.items():
+            if k not in ("track_id",):  # 保护 track_id
+                tj[k] = v
+        jf.write_text(json.dumps(tj, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return {"status": "ok", "track_id": track_id, "updated": updates}
+
     # ---------------------------------------------------------------- 工程
     def init_project(self, name: str, style: str = "", bpm: int = 0, key: str = "") -> dict:
         pdir = self.pdir / name

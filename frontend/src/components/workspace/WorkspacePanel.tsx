@@ -1,25 +1,18 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
-import { listProjects, getProject, getTrack, createProject } from '../../services/api'
+import { useUiStore } from '../../store/uiStore'
+import { useToast } from '../common/Toast'
+import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, createTrack, deleteTrack } from '../../services/api'
 import BasicInfo from './BasicInfo'
 import SectionTable from './SectionTable'
-import TrackList from './TrackList'
 import TrackEditor from './TrackEditor'
 import ChordViz from './ChordViz'
 import ExportPanel from './ExportPanel'
+import MixView from './MixView'
+import ArrangeView from './ArrangeView'
+import NoteEditor from './NoteEditor'
 import { chordToMidiNotes } from '../../utils/chordRender'
-
-interface Track {
-  name?: string
-  role?: string
-  status?: string
-  instrument?: string
-  timbre?: string
-  id?: string
-  track_id?: string
-  type?: string
-  [k: string]: any
-}
+import { MIX_TRACKS, type MixTrack } from '../../utils/trackModel'
 
 interface Section {
   name?: string
@@ -30,53 +23,84 @@ interface Section {
   [k: string]: any
 }
 
+const TABS = ['工程', '分轨', '文件', '技能'] as const
+
 export default function WorkspacePanel() {
-  const { projects, currentProject, projectData, loadProjectData, loadProjects } = useProjectStore()
+  const { projects, currentProject, projectData, loadProjectData, loadProjects, selectProject } = useProjectStore()
+  const { activeTab, setActiveTab, selectedTrackId, setSelectedTrackId } = useUiStore()
+  const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
   const [trackMd, setTrackMd] = useState('')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [mixView, setMixView] = useState<'mix' | 'arrange'>('mix')
 
-  // 加载工程列表
   useEffect(() => {
     listProjects()
       .then(loadProjects)
       .catch(() => {})
   }, [loadProjects])
 
-  const handleSelectProject = useCallback(async (name: string) => {
-    setSelectedTrack(null)
-    setTrackMd('')
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await getProject(name)
-      loadProjectData(data)
-    } catch {
-      setError('加载工程失败')
-      loadProjectData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [loadProjectData])
-
-  const handleSelectTrack = useCallback(async (track: Track) => {
-    if (!currentProject) return
-    setSelectedTrack(track)
-    try {
-      const tid = track.id || track.track_id || track.name || ''
-      const data = await getTrack(currentProject, tid)
-      setTrackMd(data.md || '')
-    } catch {
+  const handleSelectProject = useCallback(
+    async (name: string) => {
+      selectProject(name) // P0-1: 写入 currentProject
+      setSelectedTrackId(null)
       setTrackMd('')
-    }
-  }, [currentProject])
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await getProject(name)
+        loadProjectData(data)
+      } catch {
+        setError('加载工程失败')
+        loadProjectData(null)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [loadProjectData, selectProject, setSelectedTrackId],
+  )
 
-  const handleSave = useCallback((md: string) => {
-    setTrackMd(md)
-  }, [])
+  // 分轨 Tab：MixView lane 点击
+  const handleSelectMixTrack = useCallback(
+    async (mt: MixTrack) => {
+      if (!currentProject) {
+        toast.info('请先选择工程')
+        return
+      }
+      setSelectedTrackId(mt.id)
+      setSaveState('idle')
+      try {
+        const data = await getTrack(currentProject, mt.id)
+        setTrackMd(data.md || '')
+      } catch {
+        setTrackMd('')
+      }
+    },
+    [currentProject, setSelectedTrackId, toast],
+  )
 
-  // 新建工程
+  const handleSave = useCallback(
+    async (md: string) => {
+      setTrackMd(md)
+      const tid = selectedTrackId
+      if (!currentProject || !tid) {
+        setSaveState('saved')
+        return
+      }
+      setSaveState('saving')
+      try {
+        await saveTrack(currentProject, tid, md) // P0-3: 真正持久化
+        setSaveState('saved')
+        toast.success(`已保存 ${tid}`)
+      } catch (e: any) {
+        setSaveState('error')
+        toast.error(`保存失败：${e?.message || e}`)
+      }
+    },
+    [currentProject, selectedTrackId, toast],
+  )
+
   const handleNewProject = useCallback(async () => {
     const name = prompt('请输入新工程名称:')
     if (!name) return
@@ -89,15 +113,71 @@ export default function WorkspacePanel() {
       const list = await listProjects()
       loadProjects(list)
       handleSelectProject(name)
-      alert(`工程 "${name}" 创建成功`)
-    } catch (e) {
-      alert(`创建失败: ${e}`)
+      toast.success(`工程 "${name}" 创建成功`)
+    } catch (e: any) {
+      toast.error(`创建失败：${e?.message || e}`)
     }
-  }, [loadProjects, handleSelectProject])
+  }, [loadProjects, handleSelectProject, toast])
+
+  const handleDeleteProject = useCallback(async (name: string) => {
+    if (!confirm(`确定要删除工程 "${name}" 吗？此操作不可恢复！`)) return
+    try {
+      await deleteProject(name)
+      const list = await listProjects()
+      loadProjects(list)
+      if (currentProject === name) {
+        selectProject(null)
+      }
+      toast.success(`已删除工程: ${name}`)
+    } catch (e: any) {
+      toast.error(`删除失败：${e?.message || e}`)
+    }
+  }, [currentProject, loadProjects, selectProject, toast])
+
+  const handleRenameProject = useCallback(async (name: string) => {
+    const newName = prompt(`将工程 "${name}" 重命名为:`, name)
+    if (!newName || newName === name) return
+    try {
+      await renameProject(name, newName)
+      const list = await listProjects()
+      loadProjects(list)
+      selectProject(newName)
+      toast.success(`已重命名为: ${newName}`)
+    } catch (e: any) {
+      toast.error(`重命名失败：${e?.message || e}`)
+    }
+  }, [currentProject, loadProjects, selectProject, toast])
+
+  const handleAddTrack = useCallback(async () => {
+    if (!currentProject) {
+      toast.info('请先选择工程')
+      return
+    }
+    const name = prompt('轨道名称:')
+    if (!name) return
+    const type = prompt('轨道类型 (乐器/人声/和声/打击乐/歌词):', '乐器') || '乐器'
+    const role = prompt('轨道角色/职责:', '') || ''
+    try {
+      await createTrack(currentProject, { id: name, name, type, role, instrument: '' })
+      toast.success(`已添加轨道: ${name}`)
+    } catch (e: any) {
+      toast.error(`添加失败：${e?.message || e}`)
+    }
+  }, [currentProject, toast])
+
+  const handleDeleteTrack = useCallback(async (trackId: string) => {
+    if (!currentProject) return
+    if (!confirm(`确定要删除轨道 "${trackId}" 吗？`)) return
+    try {
+      await deleteTrack(currentProject, trackId)
+      toast.success(`已删除轨道: ${trackId}`)
+    } catch (e: any) {
+      toast.error(`删除失败：${e?.message || e}`)
+    }
+  }, [currentProject, toast])
 
   // 数据提取
   const sections: Section[] = projectData?.sections || []
-  const tracks: Track[] = projectData?.tracks || []
   const basic = (projectData as any)?.basic || (projectData as any)?.meta || {}
   const firstSec = sections[0] || {}
   const chordRaw = firstSec.chords?.[0] || firstSec.chord || ''
@@ -110,95 +190,188 @@ export default function WorkspacePanel() {
   const lang = (projectData as any)?.language || ''
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      {/* 工程选择栏 */}
-      <div className="flex items-center gap-2 p-3 border-b bg-gray-50 shrink-0">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+      {/* 工程选择栏（常驻） */}
+      <div className="flex items-center gap-2 p-3 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
         <select
           value={currentProject || ''}
           onChange={(e) => e.target.value && handleSelectProject(e.target.value)}
-          className="flex-1 border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="flex-1 border rounded-md px-3 py-1.5 text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
         >
           <option value="">-- 选择工程 --</option>
           {projects.map((p: any) => (
-            <option key={p.name} value={p.name}>{p.name}</option>
+            <option key={p.name} value={p.name}>
+              {p.name}
+            </option>
           ))}
         </select>
+        {currentProject && (
+          <>
+            <button
+              onClick={() => handleRenameProject(currentProject)}
+              className="px-2 py-1.5 bg-blue-500 text-white rounded-md text-xs hover:bg-blue-600 transition shrink-0"
+              title="重命名工程"
+            >
+              ✏️ 重命名
+            </button>
+            <button
+              onClick={() => handleDeleteProject(currentProject)}
+              className="px-2 py-1.5 bg-red-500 text-white rounded-md text-xs hover:bg-red-600 transition shrink-0"
+              title="删除工程"
+            >
+              🗑️ 删除
+            </button>
+          </>
+        )}
         <button
           onClick={handleNewProject}
           className="px-3 py-1.5 bg-green-500 text-white rounded-md text-sm hover:bg-green-600 transition shrink-0"
         >
-          新建工程
+          + 新建
         </button>
-        {selectedTrack && (
-          <button
-            onClick={() => setSelectedTrack(null)}
-            className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600"
-          >
-            取消选择轨道
-          </button>
-        )}
       </div>
 
-      {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {loading && <div className="text-center text-gray-400 mt-10">加载中...</div>}
-        {!loading && error && <div className="text-center text-red-400 mt-10">{error}</div>}
-        {!loading && !currentProject && !projectData && (
-          <div className="text-center text-gray-400 mt-10">
-            <p className="text-lg">请先选择工程</p>
-            <p className="text-sm mt-2">使用左侧对话或上方按钮</p>
+      {/* Tab 栏 */}
+      <div className="flex border-b shrink-0 bg-white dark:bg-gray-800 dark:border-gray-700">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={[
+              'px-4 py-2 text-sm border-b-2 transition',
+              activeTab === tab
+                ? 'border-blue-500 text-blue-600 font-medium'
+                : 'border-transparent text-gray-500 hover:text-gray-700',
+            ].join(' ')}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab 内容 */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {!currentProject && (
+          <div className="h-full flex items-center justify-center text-center text-gray-400">
+            <div>
+              <p className="text-lg">请先选择工程</p>
+              <p className="text-sm mt-2">使用左侧对话或上方下拉框</p>
+            </div>
           </div>
         )}
-        {!loading && projectData && (
-          <div className="space-y-4">
-            {/* 基本信息 */}
-            <BasicInfo
-              bpm={bpm}
-              key={key}
-              style={style}
-              mood={mood}
-              time_signature={timeSig}
-              language={lang}
-            />
 
-            {/* 段落与和弦表 */}
-            <SectionTable sections={sections} />
-
-            {/* 和弦钢琴预览 */}
-            {chordRaw && <ChordViz chordName={chordRaw} notes={chordNotes} />}
-
-            {/* 导出按钮 */}
-            {!selectedTrack && <ExportPanel />}
-
-            {/* 分轨列表 或 轨道编辑器 */}
-            {selectedTrack ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{selectedTrack.name || selectedTrack.id || selectedTrack.track_id || ''}</span>
-                  {selectedTrack.role && (
-                    <span className="text-sm text-gray-500">{selectedTrack.role}</span>
-                  )}
-                  <StatusChip status={selectedTrack.status} />
-                </div>
-                <TrackEditor
-                  trackId={selectedTrack.id || selectedTrack.track_id || selectedTrack.name || ''}
-                  initialMd={trackMd}
-                  onSave={handleSave}
+        {currentProject && activeTab === '工程' && (
+          <div className="h-full overflow-y-auto p-4 space-y-4">
+            {loading && <div className="text-center text-gray-400 mt-10">加载中...</div>}
+            {error && <div className="text-center text-red-400 mt-10">{error}</div>}
+            {!loading && projectData && (
+              <>
+                <BasicInfo
+                  bpm={bpm}
+                  key={key}
+                  style={style}
+                  mood={mood}
+                  time_signature={timeSig}
+                  language={lang}
                 />
-              </div>
-            ) : (
-              <TrackList
-                tracks={tracks.map((t) => ({
-                  name: t.name || t.track_id || t.id || '',
-                  role: t.role || '',
-                  status: t.status || '',
-                  instrument: t.instrument || t.timbre || '',
-                  timbre: t.timbre || t.instrument || '',
-                  id: t.id || t.track_id || t.name || '',
-                }))}
-                onSelect={handleSelectTrack}
-              />
+                <SectionTable sections={sections} />
+                {chordRaw && <ChordViz chordName={chordRaw} notes={chordNotes} />}
+                <ExportPanel />
+              </>
             )}
+          </div>
+        )}
+
+        {currentProject && activeTab === '分轨' && (
+          <div className="h-full flex flex-col min-h-0">
+            {/* 轨道管理工具栏 */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
+              <button
+                onClick={handleAddTrack}
+                className="px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs hover:bg-blue-600 transition"
+              >
+                + 添加轨道
+              </button>
+              {selectedTrackId && (
+                <button
+                  onClick={() => handleDeleteTrack(selectedTrackId)}
+                  className="px-3 py-1.5 bg-red-500 text-white rounded-md text-xs hover:bg-red-600 transition"
+                >
+                  删除选中轨道
+                </button>
+              )}
+              <span className="text-xs text-gray-400 ml-auto">
+                {selectedTrackId ? `选中: ${selectedTrackId}` : '点击轨道选中'}
+              </span>
+            </div>
+            {/* 左：分轨混音 / 总览 切换 */}
+            <div className="flex-1 flex min-h-0">
+              {/* 视图切换 */}
+              <div className="flex flex-col">
+                <div className="flex flex-col gap-1 p-2 border-r bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
+                  <button
+                    onClick={() => setMixView('mix')}
+                    className={[
+                      'px-3 py-2 rounded text-xs font-medium transition',
+                      mixView === 'mix' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 border hover:bg-gray-100',
+                    ].join(' ')}
+                  >
+                    🎚 混音台
+                  </button>
+                  <button
+                    onClick={() => setMixView('arrange')}
+                    className={[
+                      'px-3 py-2 rounded text-xs font-medium transition',
+                      mixView === 'arrange' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 border hover:bg-gray-100',
+                    ].join(' ')}
+                  >
+                    🗂 总览
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 border-r min-h-0">
+                {mixView === 'mix' ? (
+                  <MixView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
+                ) : (
+                  <ArrangeView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
+                )}
+              </div>
+              {/* 右：轨道编辑（主从） */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                {selectedTrackId ? (
+                  <TrackSubView
+                    trackId={selectedTrackId}
+                    trackMd={trackMd}
+                    saveState={saveState}
+                    onSave={handleSave}
+                  />
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-center text-gray-400">
+                    <div>
+                      <p>点击左侧任意轨道</p>
+                      <p className="text-sm mt-1">查看混音状态并编辑其音符 / MD</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentProject && activeTab === '文件' && (
+          <div className="h-full overflow-y-auto p-6 text-sm text-gray-500">
+            <p className="font-medium text-gray-700 mb-2">文件浏览器</p>
+            <p>后端接口 <code className="bg-gray-100 px-1 rounded">GET /api/project/{'{name}'}/files</code> 待接入。</p>
+            <p className="mt-1">接入后可浏览 song_engineer/、track/、ai-track/ 等目录并预览 .md/.json/.wav/.mid。</p>
+          </div>
+        )}
+
+        {currentProject && activeTab === '技能' && (
+          <div className="h-full overflow-y-auto p-6 text-sm text-gray-500">
+            <p className="font-medium text-gray-700 mb-2">技能面板</p>
+            <p>后端接口 <code className="bg-gray-100 px-1 rounded">GET /api/skills</code> 待接入。</p>
+            <p className="mt-1">接入后可可视化运行 .workbuddy 技能（填参表单 + 日志复用 ToolCallCard）。</p>
+            <p className="mt-1 text-amber-600">⚠️ 先补齐 ai_chords_master / karplus-strong / musicgen-stereo-melody 的 frontmatter（当前缺失导致扫描不到）。</p>
           </div>
         )}
       </div>
@@ -206,21 +379,64 @@ export default function WorkspacePanel() {
   )
 }
 
-function StatusChip({ status }: { status?: string }) {
-  const colors: Record<string, string> = {
-    done: 'bg-green-100 text-green-700',
-    '定稿': 'bg-green-100 text-green-700',
-    running: 'bg-blue-100 text-blue-700',
-    '制作中': 'bg-blue-100 text-blue-700',
-    pending: 'bg-yellow-100 text-yellow-700',
-    '草稿': 'bg-yellow-100 text-yellow-700',
-    error: 'bg-red-100 text-red-700',
-    '错误': 'bg-red-100 text-red-700',
-  }
-  const cls = colors[status || ''] || 'bg-gray-100 text-gray-600'
+/** 分轨右侧：音符卷帘 / MD 编辑器 子切换 */
+function TrackSubView({
+  trackId,
+  trackMd,
+  saveState,
+  onSave,
+}: {
+  trackId: string
+  trackMd: string
+  saveState: 'idle' | 'saving' | 'saved' | 'error'
+  onSave: (md: string) => void
+}) {
+  const [sub, setSub] = useState<'notes' | 'md'>('notes')
+  const track = MIX_TRACKS.find((t) => t.id === trackId) || null
+
   return (
-    <span className={`px-2 py-0.5 rounded text-xs ${cls}`}>
-      {status || 'unknown'}
-    </span>
+    <div className="flex flex-col min-h-0 h-full">
+      <div className="flex gap-2 p-2 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
+        <SubTab active={sub === 'notes'} onClick={() => setSub('notes')}>
+          音符卷帘
+        </SubTab>
+        <SubTab active={sub === 'md'} onClick={() => setSub('md')}>
+          MD 编辑器
+        </SubTab>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden p-3">
+        {sub === 'notes' ? (
+          track ? (
+            <NoteEditor track={track} />
+          ) : (
+            <div className="text-gray-400 text-sm">无混音元数据，使用 MD 编辑器。</div>
+          )
+        ) : (
+          <TrackEditor trackId={trackId} initialMd={trackMd} onSave={onSave} saveState={saveState} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SubTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        'px-3 py-1 rounded text-sm transition',
+        active ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 border hover:bg-gray-100',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   )
 }

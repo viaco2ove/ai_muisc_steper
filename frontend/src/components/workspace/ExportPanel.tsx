@@ -1,5 +1,14 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
+import AudioPlayer from '../audio/AudioPlayer'
+import WaveformView from '../audio/WaveformView'
+import { listFiles } from '../../services/api'
+
+interface AudioFile {
+  path: string
+  type: string
+  name: string
+}
 
 const TYPES = [
   { label: 'MIDI', ext: 'mid', mime: 'audio/midi' },
@@ -12,6 +21,29 @@ export default function ExportPanel({ project }: { project?: string }) {
   const { projectData } = useProjectStore()
   const name = project || (projectData as any)?.meta?.song_name || (projectData as any)?.name || ''
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
+  const [selectedAudio, setSelectedAudio] = useState<string | null>(null)
+
+  // 加载音频文件列表
+  useEffect(() => {
+    if (!name) return
+    listFiles(name)
+      .then((files: any[]) => {
+        const audioExts = ['wav', 'mp3', 'ogg', 'flac']
+        const audioList = files
+          .filter((f: any) => audioExts.includes(f.type))
+          .map((f: any) => ({
+            path: f.path,
+            type: f.type,
+            name: f.path.split(/[/\\]/).pop() || f.path,
+          }))
+        setAudioFiles(audioList)
+        if (audioList.length > 0 && !selectedAudio) {
+          setSelectedAudio(audioList[0].path)
+        }
+      })
+      .catch(() => setAudioFiles([]))
+  }, [name, projectData])
 
   const handleExport = useCallback(async (ext: string) => {
     if (!name) return
@@ -37,22 +69,58 @@ export default function ExportPanel({ project }: { project?: string }) {
     }
   }, [name])
 
+  const getAudioUrl = (path: string) => {
+    // 转换相对路径为 API URL
+    return `/api/file/${encodeURIComponent(path)}`
+  }
+
   if (!name) return null
 
   return (
-    <div className="border rounded-lg p-4">
-      <h3 className="font-medium text-gray-700 mb-3">导出</h3>
-      <div className="flex flex-wrap gap-2">
-        {TYPES.map(({ label, ext }) => (
-          <button
-            key={ext}
-            onClick={() => handleExport(ext)}
-            disabled={!!downloading}
-            className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50 transition"
-          >
-            {downloading === ext ? '导出中...' : label}
-          </button>
-        ))}
+    <div className="space-y-4">
+      {/* 音频播放区 */}
+      {audioFiles.length > 0 && (
+        <div className="border rounded-lg p-4 bg-gray-50">
+          <h3 className="font-medium text-gray-700 mb-3">🎵 音频播放</h3>
+          <div className="flex gap-2 mb-3 flex-wrap">
+            {audioFiles.map((af) => (
+              <button
+                key={af.path}
+                onClick={() => setSelectedAudio(af.path)}
+                className={`px-3 py-1.5 rounded text-sm transition ${
+                  selectedAudio === af.path
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-white border text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {af.name}
+              </button>
+            ))}
+          </div>
+          {selectedAudio && (
+            <div className="space-y-2">
+              <AudioPlayer src={getAudioUrl(selectedAudio)} />
+              <WaveformView src={getAudioUrl(selectedAudio)} height={60} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 导出区 */}
+      <div className="border rounded-lg p-4">
+        <h3 className="font-medium text-gray-700 mb-3">📥 导出工程</h3>
+        <div className="flex flex-wrap gap-2">
+          {TYPES.map(({ label, ext }) => (
+            <button
+              key={ext}
+              onClick={() => handleExport(ext)}
+              disabled={!!downloading}
+              className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50 transition"
+            >
+              {downloading === ext ? '导出中...' : label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
