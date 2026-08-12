@@ -8,6 +8,7 @@ const WS_URL: string =
 
 type MsgHandler = (data: any) => void
 type StatusCb = (s: 'idle' | 'connected' | 'running') => void
+type SendingCb = (s: boolean) => void
 
 export interface AiAdjustPayload {
   project: string
@@ -26,6 +27,8 @@ class WsClient {
   private manualClose = false
   private handlers = new Set<MsgHandler>()
   private statusCb: StatusCb | null = null
+  private sendingCb: SendingCb | null = null
+  private _sending = false
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return
@@ -72,7 +75,11 @@ class WsClient {
     const p: any = { type: 'chat', msg }
     if (audioPath) p.audio_path = audioPath
     if (project) p.project = project
-    return this.send(p)
+    this._sending = true
+    this.sendingCb?.(true)
+    const ok = this.send(p)
+    // 发送后保持 sending 状态直到收到响应
+    return ok
   }
 
   /** P4-1: AI 调整走 WS 对话链路（受限 ReAct + 多步自纠错） */
@@ -99,6 +106,26 @@ class WsClient {
 
   setStatusCb(cb: StatusCb) {
     this.statusCb = cb
+  }
+
+  setSendingCb(cb: SendingCb) {
+    this.sendingCb = cb
+  }
+
+  get sending(): boolean {
+    return this._sending
+  }
+
+  // P2-4: 重试工具调用
+  retryToolCall(pendingId: string): boolean {
+    this._sending = true
+    this.sendingCb?.(true)
+    const ok = this.send({ type: 'retry_tool_call', pendingId })
+    setTimeout(() => {
+      this._sending = false
+      this.sendingCb?.(false)
+    }, 500)
+    return ok
   }
 
   close() {
