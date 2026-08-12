@@ -9,6 +9,18 @@ from ..core import noteconv
 router = APIRouter(tags=["project"])
 pm = ProjectManager()
 
+
+def _assert_safe_id(s: str, label: str) -> None:
+    """拒绝可构成路径穿越的标识符（工程名 / 轨道ID）。
+
+    用户可控的 name、tid、track_id、CreateTrackReq.id 会直接参与文件名拼接，
+    必须挡掉路径分隔符与父目录引用（..），否则可在工程目录外落盘/读取。
+    """
+    if not s:
+        raise HTTPException(400, f"非法的{label}：不能为空")
+    if s in (".", "..") or "/" in s or "\\" in s or ".." in s:
+        raise HTTPException(400, f"非法的{label}：不允许路径分隔符或父目录引用")
+
 # Track 请求模型
 class CreateTrackReq(BaseModel):
     id: str
@@ -47,11 +59,15 @@ def get_project(name: str):
 
 @router.get("/project/{name}/track/{tid}")
 def get_track(name: str, tid: str):
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(tid, "轨道ID")
     return pm.get_track(name, tid)
 
 
 @router.put("/project/{name}/track/{tid}")
 def save_track(name: str, tid: str, req: SaveTrackReq):
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(tid, "轨道ID")
     return pm.save_track(name, tid, req.md)
 
 
@@ -74,13 +90,20 @@ _MIME = {
 
 @router.get("/project/{name}/file")
 def get_file(name: str, path: str = Query(..., description="工程内相对路径")):
-    base = pm.pdir / name
+    root = pm.pdir.resolve()
+    # 防穿越（双层）：
+    # 1) base 必须在工程根目录内——否则 name=".." 会让 base 逃逸到父目录
+    # 2) target 必须仍在 base 内
+    base = (pm.pdir / name).resolve()
+    try:
+        base.relative_to(root)
+    except ValueError:
+        raise HTTPException(400, "非法工程名：超出工程目录")
     if not base.exists():
         raise HTTPException(404, f"工程不存在: {name}")
     target = (base / path).resolve()
-    # 防穿越：target 必须仍在 base 内
     try:
-        target.relative_to(base.resolve())
+        target.relative_to(base)
     except ValueError:
         raise HTTPException(400, "非法路径：超出工程目录")
     if not target.exists() or not target.is_file():
@@ -123,6 +146,8 @@ def list_tracks(name: str):
 @router.post("/project/{name}/track")
 def create_track(name: str, req: CreateTrackReq):
     """创建新轨道"""
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(req.id, "轨道ID")
     try:
         return pm.create_track(name, req.model_dump())
     except FileNotFoundError as e:
@@ -132,15 +157,23 @@ def create_track(name: str, req: CreateTrackReq):
 @router.delete("/project/{name}/track/{track_id}")
 def delete_track(name: str, track_id: str):
     """删除轨道"""
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(track_id, "轨道ID")
     try:
         return pm.delete_track(name, track_id)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
 
 
-@router.put("/project/{name}/track/{track_id}")
+@router.put("/project/{name}/track/{track_id}/info")
 def update_track(name: str, track_id: str, req: UpdateTrackReq):
-    """更新轨道"""
+    """更新轨道元数据（改名/状态/音量等）。
+
+    原路径与 save_track 的 PUT /track/{tid} 冲突，Starlette 按注册顺序取前者，
+    导致本函数成死代码、元数据更新永远 422。现移到 /info 子路径。
+    """
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(track_id, "轨道ID")
     try:
         return pm.update_track(name, track_id, req.model_dump(exclude_unset=True))
     except FileNotFoundError as e:
@@ -155,6 +188,8 @@ class SaveNotesReq(BaseModel):
 @router.get("/project/{name}/track/{tid}/notes")
 def get_track_notes(name: str, tid: str):
     """返回轨道规范格式 notes（前端 normalizeNotes 解析为 startBeat/durBeats）"""
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(tid, "轨道ID")
     try:
         tj = pm.get_track(name, tid).get("json", {})
         return {"notes": tj.get("notes", [])}
@@ -165,6 +200,8 @@ def get_track_notes(name: str, tid: str):
 @router.put("/project/{name}/track/{tid}/notes")
 def put_track_notes(name: str, tid: str, req: SaveNotesReq):
     """接收前端 Note[]，转规范格式写回轨道 JSON（mscx 生成器可消费）"""
+    _assert_safe_id(name, "工程名")
+    _assert_safe_id(tid, "轨道ID")
     try:
         tj = pm.get_track(name, tid).get("json", {})
         original = tj.get("notes", []) if isinstance(tj.get("notes"), list) else []

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { listFiles, fileUrl, type ProjectFile } from '../../services/api'
 
 interface TreeNode {
@@ -13,6 +13,14 @@ const TEXT_TYPES = new Set(['md', 'json', 'txt', 'csv', 'mscx', 'xml', 'ustx'])
 const IMG_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'])
 const AUDIO_TYPES = new Set(['wav', 'mp3', 'ogg', 'm4a'])
 
+const ICON_BY_TYPE: Record<string, string> = {
+  wav: '🎵',
+  mp3: '🎵',
+  mid: '🎼',
+  json: '🔧',
+  md: '📝',
+}
+
 function buildTree(files: ProjectFile[]): TreeNode {
   const root: TreeNode = { name: '', path: '', isDir: true, children: {} }
   for (const f of files) {
@@ -26,7 +34,16 @@ function buildTree(files: ProjectFile[]): TreeNode {
       if (isLast) {
         cur.children[part] = { name: part, path: acc, isDir: false, children: {}, file: f }
       } else {
-        if (!cur.children[part]) cur.children[part] = { name: part, path: acc, isDir: true, children: {} }
+        const existing = cur.children[part]
+        // 同名冲突升级：若更深路径需要它作为目录，把已存在的文件节点升级为目录
+        if (!existing || !existing.isDir) {
+          cur.children[part] = {
+            name: part,
+            path: acc,
+            isDir: true,
+            children: existing?.children || {},
+          }
+        }
         cur = cur.children[part]
       }
     }
@@ -96,11 +113,7 @@ function FileTreeNode({
     )
   }
 
-  const icon = node.file?.type === 'wav' || node.file?.type === 'mp3' ? '🎵'
-    : node.file?.type === 'mid' ? '🎼'
-    : node.file?.type === 'json' ? '🔧'
-    : node.file?.type === 'md' ? '📝'
-    : '📄'
+  const icon = ICON_BY_TYPE[node.file?.type || ''] || '📄'
   const active = node.path === selectedPath
   return (
     <div
@@ -125,6 +138,7 @@ export default function FileBrowser({ project }: { project: string }) {
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<TreeNode | null>(null)
   const [preview, setPreview] = useState<Preview>({ kind: 'none' })
+  const abortRef = useRef<AbortController | null>(null)
 
   const tree = useMemo(() => buildTree(files), [files])
 
@@ -147,10 +161,22 @@ export default function FileBrowser({ project }: { project: string }) {
     const f = selected.file
     const url = fileUrl(project, f.path)
     if (TEXT_TYPES.has(f.type)) {
-      fetch(url)
-        .then((r) => r.text())
+      // 异步保护：切换文件时取消上一个未完成的请求，避免慢响应覆盖当前预览；
+      // 同时检查 r.ok，错误响应体不当作文件内容渲染。
+      abortRef.current?.abort()
+      const ctrl = new AbortController()
+      abortRef.current = ctrl
+      setPreview({ kind: 'none' })
+      fetch(url, { signal: ctrl.signal })
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`)
+          return r.text()
+        })
         .then((t) => setPreview({ kind: 'text', text: t }))
-        .catch((e) => setPreview({ kind: 'error', msg: String(e?.message || e) }))
+        .catch((e) => {
+          if (ctrl.signal.aborted) return
+          setPreview({ kind: 'error', msg: String(e?.message || e) })
+        })
     } else if (IMG_TYPES.has(f.type)) {
       setPreview({ kind: 'image', url })
     } else if (AUDIO_TYPES.has(f.type)) {
@@ -214,7 +240,9 @@ export default function FileBrowser({ project }: { project: string }) {
             <div className="flex-1 min-h-0 overflow-auto p-3">
               {preview.kind === 'text' && (
                 <pre className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
-                  {preview.text}
+                  {preview.text.length > 100000
+                    ? preview.text.slice(0, 100000) + '\n…(已截断，完整内容请下载)'
+                    : preview.text}
                 </pre>
               )}
               {preview.kind === 'image' && (

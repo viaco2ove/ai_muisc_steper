@@ -41,12 +41,8 @@ def karplus_strong(frequency, duration, velocity=0.8, technique="pluck", decay_f
         return np.array([])
 
     period = max(int(SAMPLE_RATE / frequency), 2)
-    noise = np.random.randn(period) * velocity
-
-    if technique == "slap":
-        noise = np.concatenate([noise * 2, np.random.randn(period) * velocity * 0.5])
-        period = len(noise)
-        decay_factor = 0.990
+    # 初始激励噪声不乘 velocity；最终 output 由末行统一乘 velocity，避免力度二次放大(∝velocity²)
+    noise = np.random.randn(period)
 
     buffer = noise.copy()
     output = np.zeros(n_samples)
@@ -58,22 +54,15 @@ def karplus_strong(frequency, duration, velocity=0.8, technique="pluck", decay_f
 
     t = np.linspace(0, duration, n_samples, endpoint=False)
 
-    if technique == "slap":
-        attack = np.exp(-t * 40)
-        sustain = np.exp(-t * 15)
-    else:
-        attack = np.minimum(t * 80, 1.0)
-        sustain = np.exp(-t * 2.5)
-
+    # 当前调用方仅使用 "pluck" 技法（拍弦走 generate_slap_guitar）
+    attack = np.minimum(t * 80, 1.0)
+    sustain = np.exp(-t * 2.5)
     envelope = attack * sustain
 
-    if technique != "slap":
-        string_noise = np.random.randn(n_samples) * 0.01 * np.exp(-t * 20)
-        output = output * envelope + string_noise
-    else:
-        output = output * envelope
+    string_noise = np.random.randn(n_samples) * 0.01 * velocity * np.exp(-t * 20)
+    output = output * envelope + string_noise
 
-    output *= velocity
+    output *= velocity  # 唯一的力度缩放点（噪声激励处不再乘）
     return output
 
 
@@ -86,7 +75,7 @@ def generate_slap_guitar(frequency, duration, velocity=0.8):
     h2 = 0.4 * np.sin(2 * np.pi * frequency * 2 * t)
     h3 = 0.2 * np.sin(2 * np.pi * frequency * 3 * t)
     h4 = 0.1 * np.sin(2 * np.pi * frequency * 4 * t)
-    noise = np.random.randn(n_samples) * 0.25
+    noise = np.random.randn(n_samples) * 0.25 * velocity
 
     attack = np.exp(-t * 60)
     decay = np.exp(-t * 12)
@@ -98,11 +87,18 @@ def generate_slap_guitar(frequency, duration, velocity=0.8):
 
 
 def parse_beat_pos(beat_pos, tempo):
-    """解析节拍位置为时间"""
-    parts = beat_pos.split('.')
-    measure = int(parts[0])
-    beat = int(parts[1])
-    subdiv = int(parts[2])
+    """解析节拍位置为时间。
+
+    兼容两种写法：两段（小节.拍）与三段（小节.拍.子拍）。缺段时按 1 处理，
+    转换失败回退到 1，避免个别音符缺细分分量时 IndexError 中断整首生成。
+    """
+    parts = str(beat_pos).split('.')
+    try:
+        measure = int(parts[0]) if len(parts) > 0 else 1
+        beat = int(parts[1]) if len(parts) > 1 else 1
+        subdiv = int(parts[2]) if len(parts) > 2 else 1
+    except (ValueError, IndexError):
+        measure, beat, subdiv = 1, 1, 1
 
     beat_duration = 60.0 / tempo
     measure_duration = beat_duration * 4

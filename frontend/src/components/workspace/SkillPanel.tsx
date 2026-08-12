@@ -11,13 +11,14 @@ interface RunResult {
 
 export default function SkillPanel() {
   const [skills, setSkills] = useState<SkillInfo[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [openName, setOpenName] = useState<string | null>(null)
   const [args, setArgs] = useState<Record<string, string>>({})
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<RunResult | null>(null)
+  const [resultSkill, setResultSkill] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -32,22 +33,27 @@ export default function SkillPanel() {
     setOpenName(s.name)
     setArgs({})
     setResult(null)
+    setResultSkill(null)
   }
 
   const doRun = async (s: SkillInfo) => {
     setRunning(true)
     setResult(null)
+    setResultSkill(null)
     try {
       // 把空串参数过滤掉，避免污染技能
-      const clean: Record<string, any> = {}
+      const clean: Record<string, string> = {}
       for (const [k, v] of Object.entries(args)) {
         if (v.trim() === '') continue
         clean[k] = v
       }
       const r = await runSkill(s.name, clean)
       setResult(r)
-    } catch (e: any) {
-      setResult({ status: 'error', error: String(e?.message || e) })
+      setResultSkill(s.name)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setResult({ status: 'error', error: msg })
+      setResultSkill(s.name)
     } finally {
       setRunning(false)
     }
@@ -122,7 +128,7 @@ export default function SkillPanel() {
                     {running ? '运行中…' : '执行'}
                   </button>
 
-                  {result && (
+                  {result && resultSkill === s.name && (
                     <div className="text-[11px] border rounded p-2 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
                       <div className="flex items-center gap-2 mb-1">
                         <span
