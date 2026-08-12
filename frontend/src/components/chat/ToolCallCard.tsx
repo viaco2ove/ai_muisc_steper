@@ -1,7 +1,8 @@
 // P2-2: ToolCallCard 增强版 - 参数表单/日志终端/产物/耗时/重试
+// P2-3: LogTerminal 批量刷新（rAF + 500 行上限）
 // D3/D4/D6：对话区渲染 AI 调整的「工具调用」卡片。
 // 展示 before/after 的 diff + 校验警告，并提供 应用 / 撤销 / 丢弃（可回滚）。
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTrackStore } from '../../store/trackStore'
 import { diffNotes, validateNotes, midiToName } from '../../utils/noteModel'
 import { useToast } from '../common/Toast'
@@ -20,6 +21,8 @@ interface LogEntry {
   text: string
 }
 
+const MAX_LOG_LINES = 500 // P2-3: 日志行数上限
+
 export default function ToolCallCard({ message }: Props) {
   const toast = useToast()
   const pendingId = message.files?.[0]
@@ -33,6 +36,43 @@ export default function ToolCallCard({ message }: Props) {
   const [showLogTerminal, setShowLogTerminal] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
+
+  // P2-3: rAF 批量刷新 refs
+  const pendingLogsRef = useRef<LogEntry[]>([])
+  const rafIdRef = useRef<number | null>(null)
+  const logContainerRef = useRef<HTMLDivElement>(null)
+
+  // P2-3: 使用 rAF 批量刷新日志
+  const flushLogs = useCallback(() => {
+    if (pendingLogsRef.current.length === 0) return
+    setLogs((prev) => {
+      const combined = [...prev, ...pendingLogsRef.current]
+      // P2-3: 超过 500 行时截断旧日志
+      return combined.length > MAX_LOG_LINES
+        ? combined.slice(combined.length - MAX_LOG_LINES)
+        : combined
+    })
+    pendingLogsRef.current = []
+    rafIdRef.current = null
+  }, [])
+
+  // P2-3: 添加日志（批量 rAF）
+  const addLog = useCallback((text: string, level: LogEntry['level'] = 'info') => {
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    pendingLogsRef.current.push({ id: `${Date.now()}_${Math.random()}`, time, level, text })
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(flushLogs)
+    }
+  }, [flushLogs])
+
+  // P2-3: 清理 rAF
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current)
+      }
+    }
+  }, [])
 
   // 计时器
   useEffect(() => {
@@ -48,12 +88,6 @@ export default function ToolCallCard({ message }: Props) {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
-
-  // P2-2: 添加日志
-  const addLog = (text: string, level: LogEntry['level'] = 'info') => {
-    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    setLogs((prev) => [...prev, { id: `${Date.now()}_${Math.random()}`, time, level, text }])
-  }
 
   // 模拟工具调用日志（实际由 WS 事件驱动）
   useEffect(() => {
@@ -197,11 +231,11 @@ export default function ToolCallCard({ message }: Props) {
           </div>
         )}
 
-        {/* P2-2: 日志终端 */}
+        {/* P2-2: 日志终端 P2-3: rAF 批量刷新 */}
         {showLogTerminal && (
-          <div className="mb-2 bg-gray-900 rounded p-2 max-h-32 overflow-y-auto">
+          <div ref={logContainerRef} className="mb-2 bg-gray-900 rounded p-2 max-h-32 overflow-y-auto font-mono">
             {logs.map((log) => (
-              <div key={log.id} className="text-[11px] font-mono flex gap-2">
+              <div key={log.id} className="text-[11px] flex gap-2">
                 <span className="text-gray-500">[{log.time}]</span>
                 <span className={
                   log.level === 'error' ? 'text-red-400' :
