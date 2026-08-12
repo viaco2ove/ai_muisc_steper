@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import AudioPlayer from '../audio/AudioPlayer'
 import WaveformView from '../audio/WaveformView'
-import { listFiles } from '../../services/api'
+import { listFiles, exportProjectZip } from '../../services/api'
 
 interface AudioFile {
   path: string
@@ -23,6 +23,7 @@ export default function ExportPanel({ project }: { project?: string }) {
   const [downloading, setDownloading] = useState<string | null>(null)
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
   const [selectedAudio, setSelectedAudio] = useState<string | null>(null)
+  const [exportingZip, setExportingZip] = useState(false)
 
   // 加载音频文件列表
   useEffect(() => {
@@ -74,6 +75,18 @@ export default function ExportPanel({ project }: { project?: string }) {
     return `/api/file/${encodeURIComponent(path)}`
   }
 
+  const handleExportZip = async () => {
+    if (!name) return
+    setExportingZip(true)
+    try {
+      await exportProjectZip(name)
+    } catch (e: any) {
+      alert(`导出失败: ${e?.message || e}`)
+    } finally {
+      setExportingZip(false)
+    }
+  }
+
   if (!name) return null
 
   return (
@@ -120,6 +133,13 @@ export default function ExportPanel({ project }: { project?: string }) {
               {downloading === ext ? '导出中...' : label}
             </button>
           ))}
+          <button
+            onClick={handleExportZip}
+            disabled={exportingZip}
+            className="px-3 py-1.5 bg-purple-500 text-white rounded text-sm hover:bg-purple-600 disabled:opacity-50 transition"
+          >
+            {exportingZip ? '打包中...' : '📦 打包ZIP'}
+          </button>
         </div>
       </div>
     </div>

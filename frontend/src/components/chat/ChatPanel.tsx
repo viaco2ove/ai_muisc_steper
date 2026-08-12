@@ -6,7 +6,7 @@ import { uploadAudio } from '../../services/api'
 import ToolCallCard from './ToolCallCard'
 
 export default function ChatPanel() {
-  const { chat, audioPath, setAudioPath, currentProject, addChat } = useProjectStore()
+  const { chat, audioPath, setAudioPath, currentProject, addChat, aiBusy, wsStatus } = useProjectStore()
   const { sendChat } = useWebSocket()
   const { recording, audioBlob, start, stop, reset } = useAudioRecorder()
   const [input, setInput] = useState('')
@@ -106,7 +106,7 @@ export default function ChatPanel() {
 
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {chat.length === 0 && (
+        {chat.length === 0 && !aiBusy && (
           <div className="text-center text-gray-400 mt-10">
             <p>开始对话吧！</p>
             <p className="text-sm mt-1">AI会帮你完成音乐工程</p>
@@ -115,6 +115,19 @@ export default function ChatPanel() {
         {chat.map((item) => (
           <MessageBubble key={item.id} message={item} />
         ))}
+        {/* AI 进度指示器 */}
+        {aiBusy && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg animate-pulse">
+            <div className="flex gap-1">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}} />
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}} />
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}} />
+            </div>
+            <span className="text-sm text-blue-600">
+              {wsStatus === 'running' ? 'AI 思考中...' : 'AI 处理中...'}
+            </span>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 

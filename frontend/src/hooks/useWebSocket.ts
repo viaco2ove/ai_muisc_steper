@@ -82,10 +82,12 @@ export function useWebSocket() {
       case 'chain_start':
         s.addChat({ role: 'log', msg: `▶ 任务链: ${(data.tools || []).join(' → ')}` })
         s.setWsStatus('running')
+        s.setAiBusy(true)
         break
       case 'chain_done':
         s.addChat({ role: 'log', msg: `■ 完成: ok=${data.ok} fail=${data.fail}` })
         s.setWsStatus('connected')
+        s.setAiBusy(false)
         break
       // P4-1: AI 调整完成，触发可回滚预览卡片
       case 'ai_adjust_result': {
