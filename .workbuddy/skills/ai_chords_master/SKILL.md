@@ -3,7 +3,9 @@ name: ai_chords_master
 description: 沙发小曲和弦编曲与创作技能——基于用户给定基础和弦与哼唱旋律，生成和弦进行/段落设计/编曲建议。
 executable: false
 entry_script: ""
-params: {}
+params:
+  title: {description: "歌曲名", type: string, required: false}
+  progression: {description: "基础和弦进行逗号分隔", type: string, required: true}
 ---
 
 # ai_chords_master — 沙发小曲编曲与创作技能
@@ -32,10 +34,6 @@ params: {}
 
 **最低只需提供**：`基础和弦` + `风格: 沙发小曲`（旋律可选）
 
-entry_script: "scripts/composer.py"
-params: {"--title": "歌曲名", "--progression": "基础和弦进行逗号分隔(required)"}
-executable: true
----
 ## 输出目录
 输出到 /workspace/ai_chords/{song_name}/
 

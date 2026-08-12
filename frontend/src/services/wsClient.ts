@@ -6,6 +6,13 @@ const WS_URL: string =
   (import.meta.env.VITE_WS_URL as string | undefined) ||
   `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/chat`
 
+// 心跳/重连配置
+const HEARTBEAT_INTERVAL = 30000       // 30秒心跳间隔
+const HEARTBEAT_TIMEOUT = 5000         // 5秒心跳超时
+const INITIAL_RECONNECT_DELAY = 1000    // 初始重连延迟 1秒
+const MAX_RECONNECT_DELAY = 30000       // 最大重连延迟 30秒
+const RECONNECT_MULTIPLIER = 1.5        // 退避系数
+
 type MsgHandler = (data: any) => void
 type StatusCb = (s: 'idle' | 'connected' | 'running') => void
 type SendingCb = (s: boolean) => void
@@ -21,37 +28,74 @@ export interface AiAdjustPayload {
   bars?: number
 }
 
+export type WsConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
+
 class WsClient {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeatTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private manualClose = false
+  private reconnectAttempt = 0
+  private currentReconnectDelay = INITIAL_RECONNECT_DELAY
   private handlers = new Set<MsgHandler>()
   private statusCb: StatusCb | null = null
   private sendingCb: SendingCb | null = null
   private _sending = false
+  private _connectionState: WsConnectionState = 'disconnected'
+  private connectionStateListeners = new Set<(s: WsConnectionState) => void>()
+
+  get connectionState(): WsConnectionState {
+    return this._connectionState
+  }
+
+  private setConnectionState(state: WsConnectionState) {
+    this._connectionState = state
+    this.connectionStateListeners.forEach((cb) => cb(state))
+  }
+
+  onConnectionStateChange(cb: (s: WsConnectionState) => void): () => void {
+    this.connectionStateListeners.add(cb)
+    return () => this.connectionStateListeners.delete(cb)
+  }
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return
     this.manualClose = false
+    this.setConnectionState('connecting')
+
     try {
       const ws = new WebSocket(WS_URL)
       ws.onopen = () => {
+        this.reconnectAttempt = 0
+        this.currentReconnectDelay = INITIAL_RECONNECT_DELAY
         useProjectStore.getState().setWsStatus('connected')
         this.statusCb?.('connected')
+        this.setConnectionState('connected')
+        this.startHeartbeat()
       }
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
+          // 收到任何消息都视为心跳响应
+          if (data.type === 'pong' || data.type === 'heartbeat_ack') {
+            this.clearHeartbeatTimeout()
+            return
+          }
           this.handlers.forEach((h) => h(data))
         } catch (e) {
           console.error('[WS] parse failed:', e)
         }
       }
       ws.onclose = () => {
+        this.clearHeartbeat()
         useProjectStore.getState().setWsStatus('idle')
         this.ws = null
         if (!this.manualClose) {
-          this.reconnectTimer = setTimeout(() => this.connect(), 2000)
+          this.setConnectionState('reconnecting')
+          this.scheduleReconnect()
+        } else {
+          this.setConnectionState('disconnected')
         }
       }
       ws.onerror = () => {
@@ -60,7 +104,50 @@ class WsClient {
       this.ws = ws
     } catch (e) {
       console.error('[WS] Connection failed:', e)
+      this.setConnectionState('disconnected')
     }
+  }
+
+  private startHeartbeat() {
+    this.clearHeartbeat()
+    this.heartbeatTimer = setTimeout(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'ping' }))
+        // 启动心跳超时计时器
+        this.heartbeatTimeoutTimer = setTimeout(() => {
+          console.warn('[WS] Heartbeat timeout, closing connection')
+          this.ws?.close()
+        }, HEARTBEAT_TIMEOUT)
+      }
+    }, HEARTBEAT_INTERVAL)
+  }
+
+  private clearHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearTimeout(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+    this.clearHeartbeatTimeout()
+  }
+
+  private clearHeartbeatTimeout() {
+    if (this.heartbeatTimeoutTimer) {
+      clearTimeout(this.heartbeatTimeoutTimer)
+      this.heartbeatTimeoutTimer = null
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    const delay = this.currentReconnectDelay
+    this.reconnectAttempt++
+    // 指数退避
+    this.currentReconnectDelay = Math.min(
+      this.currentReconnectDelay * RECONNECT_MULTIPLIER,
+      MAX_RECONNECT_DELAY
+    )
+    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`)
+    this.reconnectTimer = setTimeout(() => this.connect(), delay)
   }
 
   send(obj: any): boolean {
@@ -130,8 +217,10 @@ class WsClient {
 
   close() {
     this.manualClose = true
+    this.clearHeartbeat()
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.ws?.close()
+    this.setConnectionState('disconnected')
   }
 }
 

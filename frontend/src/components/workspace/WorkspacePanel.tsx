@@ -13,6 +13,7 @@ import ArrangeView from './ArrangeView'
 import NoteEditor from './NoteEditor'
 import FileBrowser from './FileBrowser'
 import SkillPanel from './SkillPanel'
+import NewProjectDialog from './NewProjectDialog'
 import { chordToMidiNotes } from '../../utils/chordRender'
 import { MIX_TRACKS, type MixTrack } from '../../utils/trackModel'
 
@@ -38,6 +39,8 @@ export default function WorkspacePanel() {
   const [mixView, setMixView] = useState<'mix' | 'arrange'>('mix')
   // 轨道排序状态（存储轨道ID顺序）
   const [trackOrder, setTrackOrder] = useState<string[]>(MIX_TRACKS.map((t) => t.id))
+  // 新建工程对话框状态
+  const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
 
   useEffect(() => {
     listProjects()
@@ -106,20 +109,19 @@ export default function WorkspacePanel() {
   )
 
   const handleNewProject = useCallback(async () => {
-    const name = prompt('请输入新工程名称:')
-    if (!name) return
-    const style = prompt('风格 (如 沙发小曲/民谣/Lo-Fi):') || ''
-    const bpmStr = prompt('BPM (留空=0):') || '0'
-    const bpm = parseInt(bpmStr) || 0
-    const key = prompt('调性 (如 C, Eb, A):') || ''
+    setShowNewProjectDialog(true)
+  }, [])
+
+  const handleNewProjectSubmit = useCallback(async (data: { name: string; style?: string; bpm?: number; key?: string }) => {
     try {
-      await createProject(name, style, bpm, key)
+      await createProject(data.name, data.style, data.bpm, data.key)
       const list = await listProjects()
       loadProjects(list)
-      handleSelectProject(name)
-      toast.success(`工程 "${name}" 创建成功`)
+      handleSelectProject(data.name)
+      toast.success(`工程 "${data.name}" 创建成功`)
     } catch (e: any) {
       toast.error(`创建失败：${e?.message || e}`)
+      throw e
     }
   }, [loadProjects, handleSelectProject, toast])
 
