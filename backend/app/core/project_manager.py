@@ -130,6 +130,18 @@ class ProjectManager:
         old_dir.rename(new_dir)
         return {"status": "ok", "old": name, "new": new_name}
 
+    def copy_project(self, name: str, new_name: str) -> dict:
+        """复制工程目录"""
+        import shutil
+        src_dir = self.pdir / name
+        dst_dir = self.pdir / new_name
+        if not src_dir.exists():
+            raise FileNotFoundError(f"工程不存在: {name}")
+        if dst_dir.exists():
+            raise FileExistsError(f"目标名称已存在: {new_name}")
+        shutil.copytree(src_dir, dst_dir)
+        return {"status": "ok", "source": name, "copy": new_name}
+
     # ---------------------------------------------------------------- Track CRUD
     def list_tracks(self, name: str) -> list:
         """列出工程的所有轨道"""

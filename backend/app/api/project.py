@@ -140,6 +140,17 @@ def rename_project(name: str, new_name: str):
         raise HTTPException(409, str(e))
 
 
+@router.post("/project/{name}/copy")
+def copy_project(name: str, new_name: str):
+    """复制工程"""
+    try:
+        return pm.copy_project(name, new_name)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except FileExistsError as e:
+        raise HTTPException(409, str(e))
+
+
 # ----- Track CRUD -----
 @router.get("/project/{name}/tracks")
 def list_tracks(name: str):

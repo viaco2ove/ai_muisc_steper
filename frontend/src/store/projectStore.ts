@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type ChatRole = 'user' | 'assistant' | 'log' | 'skill_done' | 'reasoning' | 'reasoning_done' | 'observation' | 'artifact' | 'tool_call'
 export type WsStatus = 'idle' | 'connected' | 'running'
@@ -58,13 +59,16 @@ interface ProjectState {
   setWsStatus: (status: WsStatus) => void
   setAudioPath: (path: string | null) => void
   setAiBusy: (v: boolean) => void
+  clearChat: () => void
 }
 
 let _msgSeq = 0
 const newId = () => `m${Date.now()}_${_msgSeq++}`
 let _activeReasoningId: string | null = null
 
-export const useProjectStore = create<ProjectState>((set) => ({
+export const useProjectStore = create<ProjectState>()(
+  persist(
+    (set) => ({
   projects: [],
   currentProject: null,
   projectData: null,
@@ -113,4 +117,12 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setAudioPath: (path) => set({ audioPath: path }),
 
   setAiBusy: (v) => set({ aiBusy: v }),
-}))
+
+      clearChat: () => set({ chat: [] }),
+    }),
+    {
+      name: 'ai-music-chat',
+      partialize: (state) => ({ chat: state.chat }),
+    }
+  )
+)

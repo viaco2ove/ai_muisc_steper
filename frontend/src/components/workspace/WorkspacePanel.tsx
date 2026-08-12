@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { useUiStore } from '../../store/uiStore'
 import { useToast } from '../common/Toast'
-import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, createTrack, deleteTrack } from '../../services/api'
+import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, copyProject, createTrack, deleteTrack } from '../../services/api'
 import BasicInfo from './BasicInfo'
 import SectionTable from './SectionTable'
 import TrackEditor from './TrackEditor'
@@ -150,6 +150,19 @@ export default function WorkspacePanel() {
     }
   }, [currentProject, loadProjects, selectProject, toast])
 
+  const handleCopyProject = useCallback(async (name: string) => {
+    const newName = prompt(`复制工程 "${name}" 为:`, `${name}_copy`)
+    if (!newName || newName === name) return
+    try {
+      await copyProject(name, newName)
+      const list = await listProjects()
+      loadProjects(list)
+      toast.success(`已复制为: ${newName}`)
+    } catch (e: any) {
+      toast.error(`复制失败：${e?.message || e}`)
+    }
+  }, [loadProjects, toast])
+
   const handleAddTrack = useCallback(async () => {
     if (!currentProject) {
       toast.info('请先选择工程')
@@ -215,6 +228,13 @@ export default function WorkspacePanel() {
               title="重命名工程"
             >
               ✏️ 重命名
+            </button>
+            <button
+              onClick={() => handleCopyProject(currentProject)}
+              className="px-2 py-1.5 bg-purple-500 text-white rounded-md text-xs hover:bg-purple-600 transition shrink-0"
+              title="复制工程"
+            >
+              📋 复制
             </button>
             <button
               onClick={() => handleDeleteProject(currentProject)}

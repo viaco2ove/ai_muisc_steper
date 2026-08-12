@@ -78,6 +78,14 @@ export async function renameProject(name: string, newName: string): Promise<{ st
   return res.json()
 }
 
+export async function copyProject(name: string, newName: string): Promise<{ status: string; source: string; copy: string }> {
+  const res = await fetch(`${BASE_URL}/api/project/${encodeName(name)}/copy?new_name=${encodeURIComponent(newName)}`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`copyProject failed: ${res.status}`)
+  return res.json()
+}
+
 export async function updateProject(name: string, data: Record<string, string | number>): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/project/${encodeName(name)}`, {
     method: 'PATCH',
@@ -197,4 +205,18 @@ export async function exportProjectZip(projectName: string): Promise<void> {
   a.download = `${projectName}.zip`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/**
+ * 轨道排序：将指定轨道上移或下移
+ * 后端未实现时由前端本地处理排序
+ */
+export async function reorderTrack(projectName: string, trackId: string, direction: 'up' | 'down', trackIds: string[]): Promise<{ trackIds: string[] }> {
+  const res = await fetch(`${BASE_URL}/api/project/${encodeName(projectName)}/track/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trackId, direction, trackIds }),
+  })
+  if (!res.ok) throw new Error(`reorderTrack failed: ${res.status}`)
+  return res.json()
 }

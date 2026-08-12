@@ -122,13 +122,19 @@ export default function ChatPanel() {
     }
   }, [currentProject])
 
-  const handleSend = () => {
-    if (!input.trim() && !audioPath) return
-    // P2-4: 乐观插入用户消息，立即进列表
-    addChat({ role: 'user', msg: input, files: audioPath ? [audioPath] : undefined })
-    sendChat(input, audioPath || undefined, currentProject || undefined)
-    setInput('')
-    setAudioPath(null)
+  // 支持重发的发送函数
+  const handleSend = (messageText?: string) => {
+    const textToSend = messageText !== undefined ? messageText : input
+    if (!textToSend.trim()) return
+    // P2-4: 乐观插入用户消息，立即进列表（仅在新消息时添加）
+    if (messageText === undefined) {
+      addChat({ role: 'user', msg: input, files: audioPath ? [audioPath] : undefined })
+    }
+    sendChat(textToSend, audioPath || undefined, currentProject || undefined)
+    if (messageText === undefined) {
+      setInput('')
+      setAudioPath(null)
+    }
     setSending(true)
     // 假设发送后 500ms 内会收到响应
     setTimeout(() => setSending(false), 500)
@@ -247,7 +253,7 @@ export default function ChatPanel() {
           </div>
         )}
         {chat.map((item) => (
-          <MessageBubble key={item.id} message={item} />
+          <MessageBubble key={item.id} message={item} onResend={handleSend} />
         ))}
         {/* AI 进度指示器 */}
         {aiBusy && (
@@ -357,8 +363,19 @@ function ThoughtBlock({ content }: { content: string }) {
   )
 }
 
-function MessageBubble({ message }: { message: { id: string; role: string; msg: string; files?: string[] } }) {
+function MessageBubble({ message, onResend }: { message: { id: string; role: string; msg: string; files?: string[] }; onResend?: (msg: string) => void }) {
+  const [showTools, setShowTools] = useState(false)
   const { role, msg, files } = message
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg).catch(console.error)
+  }
+
+  const handleResend = () => {
+    if (onResend) {
+      onResend(msg)
+    }
+  }
 
   if (role === 'reasoning') {
     // P2-6: 折叠的灰色框, 与正文分开
@@ -431,9 +448,19 @@ function MessageBubble({ message }: { message: { id: string; role: string; msg: 
 
   if (role === 'user') {
     return (
-      <div className="flex justify-end">
-        <div className="bg-blue-500 text-white rounded-lg px-4 py-2 max-w-[80%]">
+      <div
+        className="flex justify-end"
+        onMouseEnter={() => setShowTools(true)}
+        onMouseLeave={() => setShowTools(false)}
+      >
+        <div className="relative bg-blue-500 text-white rounded-lg px-4 py-2 max-w-[80%]">
           <p className="text-sm whitespace-pre-wrap">{msg}</p>
+          {showTools && (
+            <div className="absolute -top-8 right-0 flex gap-1 bg-gray-800 rounded px-1 py-0.5 z-10">
+              <button onClick={handleCopy} className="text-xs px-2 py-1 text-white hover:bg-gray-600 rounded">复制</button>
+              <button onClick={handleResend} className="text-xs px-2 py-1 text-white hover:bg-gray-600 rounded">重发</button>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -450,5 +477,20 @@ function MessageBubble({ message }: { message: { id: string; role: string; msg: 
   }
 
   // assistant: P2-5 打字机效果
-  return <AssistantBubble content={msg} />
+  return (
+    <div
+      className="flex justify-start"
+      onMouseEnter={() => setShowTools(true)}
+      onMouseLeave={() => setShowTools(false)}
+    >
+      <div className="relative">
+        <AssistantBubble content={msg} />
+        {showTools && msg && (
+          <div className="absolute -top-8 right-0 flex gap-1 bg-gray-800 rounded px-1 py-0.5 z-10">
+            <button onClick={handleCopy} className="text-xs px-2 py-1 text-white hover:bg-gray-600 rounded">复制</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
