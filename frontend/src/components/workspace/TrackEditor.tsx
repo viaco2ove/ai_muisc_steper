@@ -122,7 +122,11 @@ export default function TrackEditor({ trackId, initialMd = '', onSave, saveState
 
   // P3-3: 左右分栏预览内容
   const previewContent = useMemo(() => {
-    return <ReactMarkdown className="prose prose-sm max-w-none">{md}</ReactMarkdown>
+    return (
+      <div className="prose prose-sm max-w-none">
+        <ReactMarkdown>{md}</ReactMarkdown>
+      </div>
+    )
   }, [md])
 
   return (
