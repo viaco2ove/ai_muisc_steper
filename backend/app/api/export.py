@@ -1,6 +1,7 @@
-"""export 路由：导出文件 + 文件下载"""
+"""export 路由：导出文件 + 文件下载 + 全曲渲染"""
 import io
 import zipfile
+import subprocess
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
@@ -26,6 +27,66 @@ def export_file(name: str, ftype: str):
         raise HTTPException(404, f"工程内无 {ftype} 文件")
     f = files[0]
     return FileResponse(str(f), filename=f.name)
+
+
+@router.post("/render/{name}")
+def render_project(name: str):
+    """全曲预览渲染（MuseScore → MP3/WAV）
+
+    调用 render_mscx 技能，将工程的 .mscx 文件渲染为音频文件
+    """
+    pdir = config.project_dir / name
+    if not pdir.exists():
+        raise HTTPException(404, f"工程不存在: {name}")
+
+    # 找 mscx 文件
+    mscx_files = sorted(pdir.rglob("*.mscx"), key=lambda f: f.stat().st_mtime, reverse=True)
+    if not mscx_files:
+        # 尝试从 MIDI 生成
+        return {
+            "status": "no_mscx",
+            "message": "工程内无 .mscx 文件，请先生成乐谱"
+        }
+
+    mscx_path = mscx_files[0]
+    out_dir = pdir / "song_engineer" / "preview"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{name}_preview.wav"
+
+    # 调用 render_mscx 技能
+    skill_dir = Path(__file__).resolve().parents[3] / ".workbuddy" / "skills" / "render_mscx"
+    skill_script = skill_dir / "scripts" / "render_mscx.py"
+
+    if not skill_script.exists():
+        # 直接返回最新的 wav 文件
+        wav_files = sorted(pdir.rglob("*.wav"), key=lambda f: f.stat().st_mtime, reverse=True)
+        if wav_files:
+            return {
+                "status": "existing",
+                "output": str(wav_files[0]),
+                "format": "wav"
+            }
+        return {"status": "no_renderer", "message": "渲染器不可用"}
+
+    try:
+        result = subprocess.run(
+            [config.python_exe, "-X", "utf8", str(skill_script), str(mscx_path), "--out", str(out_path)],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode == 0 and out_path.exists():
+            return {
+                "status": "ok",
+                "output": str(out_path),
+                "format": "wav"
+            }
+        return {
+            "status": "error",
+            "message": result.stderr[:500]
+        }
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "渲染超时"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @router.get("/export/{name}/zip")

@@ -255,3 +255,11 @@ export async function reorderTrack(projectName: string, trackId: string, directi
   if (!res.ok) throw new Error(`reorderTrack failed: ${res.status}`)
   return res.json()
 }
+
+export async function renderProject(projectName: string): Promise<{ status: string; output?: string; message?: string }> {
+  const res = await fetch(`${BASE_URL}/api/render/${encodeName(projectName)}`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`renderProject failed: ${res.status}`)
+  return res.json()
+}
