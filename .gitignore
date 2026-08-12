@@ -101,3 +101,7 @@ cache/
 /.workbuddy/skills/DiffSingerMiniEngine/configs/
 /md/kb_repo/private_kb/
 /.agentcore/
+
+# ---------- Electron ----------
+electron/dist/
+electron/build/
