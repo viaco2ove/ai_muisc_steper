@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react'
 import PianoRoll from './PianoRoll'
 import AiAssistPanel from './AiAssistPanel'
 import { MixTrack, SECTIONS } from '../../utils/trackModel'
-import { Note, genDemoNotes, midiToName, Section, splitPhonemes, SingerOverride } from '../../utils/noteModel'
+import { Note, genDemoNotes, midiToName, Section, splitPhonemes, SingerOverride, snapBeat } from '../../utils/noteModel'
 import { useToast } from '../common/Toast'
 import { useProjectStore } from '../../store/projectStore'
 import { useTrackStore, loadTrackNotes } from '../../store/trackStore'
@@ -48,6 +48,13 @@ export default function NoteEditor({ track }: NoteEditorProps) {
   const [loadingNotes, setLoadingNotes] = useState(false)
   const [source, setSource] = useState<'backend' | 'demo'>('demo')
   const [selected, setSelected] = useState<Note | null>(null)
+  const [snap, setSnap] = useState(0.25) // B3: 量化步长
+
+  // B3: 处理量化步长变化
+  const handleSnapChange = useCallback((newSnap: number) => {
+    setSnap(newSnap)
+  }, [])
+
   const [singer, setSinger] = useState({
     voicebank: track.museName || '',
     tension: 0,
@@ -130,6 +137,39 @@ export default function NoteEditor({ track }: NoteEditorProps) {
     setSelected(a)
     toast.info('已从中点分段')
   }, [selected, toast])
+
+  // B4: 按 ID 分割音符（右键菜单调用）
+  const splitNote = useCallback((id: string) => {
+    const n = notes.find((x) => x.id === id)
+    if (!n) return
+    const half = n.durBeats / 2
+    const a: Note = { ...n, id: n.id + '_a', durBeats: half }
+    const b: Note = {
+      ...n,
+      id: n.id + '_b',
+      startBeat: n.startBeat + half,
+      durBeats: half,
+    }
+    if (n.phDurs && n.phDurs.length) {
+      const ha = n.phDurs.map((d) => d / 2)
+      a.phDurs = ha
+      b.phDurs = [...ha]
+    }
+    setNotes((prev) => prev.flatMap((x) => (x.id === n.id ? [a, b] : [x])))
+    setSelected(a)
+    toast.info('已分割音符')
+  }, [notes, toast])
+
+  // B3/B4: 量化选中/指定音符到当前 snap 步长
+  const quantizeNote = useCallback((id: string, snapStep: number) => {
+    const n = notes.find((x) => x.id === id)
+    if (!n) return
+    const snapped = snapBeat(n.startBeat, snapStep)
+    if (snapped !== n.startBeat) {
+      updateNote(id, { startBeat: snapped })
+      toast.info(`已量化到 ${snapStep} 拍`)
+    }
+  }, [notes, updateNote])
 
   // D3：AI 调整预览由 WS 链路（useWebSocket 处理 ai_adjust_result）统一暂存，本组件只负责编辑与保存。
 
@@ -236,8 +276,11 @@ export default function NoteEditor({ track }: NoteEditorProps) {
         onNoteUpdate={updateNote}
         onNoteAdd={addNote}
         onNoteDelete={deleteNote}
+        onNoteSplit={splitNote}
+        onNoteQuantize={quantizeNote}
+        onSnapChange={handleSnapChange}
         playheadBeat={playBeat}
-        snap={0.25}
+        snap={snap}
         dark={dark}
       />
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import {
   MIX_TRACKS,
   SECTIONS,
@@ -9,6 +9,9 @@ import {
   statusColor,
   type MixTrack,
 } from '../../utils/trackModel'
+import AudioPlayer from '../audio/AudioPlayer'
+import { fileUrl } from '../../services/api'
+import { useProjectStore } from '../../store/projectStore'
 
 interface MixViewProps {
   selectedId: string | null
@@ -38,6 +41,39 @@ function VolSlider({
 export default function MixView({ selectedId, onSelect }: MixViewProps) {
   const [tracks, setTracks] = useState<MixTrack[]>(MIX_TRACKS)
   const [master, setMaster] = useState(0.85)
+  // P6-3/P6-5: 试听状态
+  const [previewTrack, setPreviewTrack] = useState<string | null>(null)
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+  const [playingTracks, setPlayingTracks] = useState<Set<string>>(new Set())  // 正在播放的轨道
+  const { currentProject } = useProjectStore()
+
+  // P6-3: 试听单轨 WAV
+  const handlePreview = useCallback((track: MixTrack) => {
+    if (currentProject) {
+      // 构造轨道音频文件路径
+      const audioPath = `tracks/${track.id}.wav`
+      setPreviewSrc(fileUrl(currentProject, audioPath))
+      setPreviewTrack(track.id)
+    }
+  }, [currentProject])
+
+  // P6-5: 联动 AudioPlayer 试听（静音/独奏切换时更新播放状态）
+  // 当某轨被静音时，如果该轨正在试听则停止
+  const handleMute = useCallback((trackId: string) => {
+    toggleMute(trackId)
+    // 如果该轨正在播放且被静音，停止播放
+    if (playingTracks.has(trackId)) {
+      setPlayingTracks((prev) => {
+        const next = new Set(prev)
+        next.delete(trackId)
+        return next
+      })
+      if (previewTrack === trackId) {
+        setPreviewSrc(null)
+        setPreviewTrack(null)
+      }
+    }
+  }, [playingTracks, previewTrack])
 
   const anySolo = useMemo(() => tracks.some((t) => t.solo), [tracks])
 
@@ -114,7 +150,7 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      toggleMute(t.id)
+                      handleMute(t.id)
                     }}
                     className={`w-5 h-5 rounded text-[10px] font-bold ${
                       t.muted ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-600'
@@ -134,6 +170,19 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
                     title="独奏"
                   >
                     S
+                  </button>
+                  {/* P6-3: 试听按钮 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handlePreview(t)
+                    }}
+                    className={`w-5 h-5 rounded text-[10px] font-bold ${
+                      previewTrack === t.id ? 'bg-green-500 text-white animate-pulse' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                    }`}
+                    title="试听该轨"
+                  >
+                    ▶
                   </button>
                   <span className="font-medium text-sm text-gray-800 truncate">{t.name}</span>
                   <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] ${statusColor(t.status)}`}>
@@ -215,6 +264,13 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
           )
         })}
       </div>
+
+      {/* P6-3: 试听播放器 */}
+      {previewSrc && (
+        <div className="shrink-0 border-t bg-white p-2">
+          <AudioPlayer src={previewSrc} className="bg-gray-50" />
+        </div>
+      )}
     </div>
   )
 }

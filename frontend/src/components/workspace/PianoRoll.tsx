@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { Note, velocityColor, midiToName, isBlackKey, snapBeat } from '../../utils/noteModel'
 
 interface PianoRollProps {
@@ -9,10 +9,20 @@ interface PianoRollProps {
   onNoteUpdate?: (id: string, patch: Partial<Note>) => void
   onNoteAdd?: (note: Note) => void
   onNoteDelete?: (id: string) => void
+  onNoteSplit?: (id: string) => void
+  onNoteQuantize?: (id: string, snap: number) => void
+  onSnapChange?: (snap: number) => void
   snap?: number // 量化步长(拍)，默认 0.25
   playheadBeat?: number | null // E4 走带播放头（拍）
   readOnly?: boolean
   dark?: boolean // E5 深色主题
+}
+
+// B4 右键菜单状态
+interface ContextMenu {
+  x: number
+  y: number
+  noteId: string | null
 }
 
 const PX_PER_BEAT = 30
@@ -43,6 +53,9 @@ export default function PianoRoll({
   onNoteUpdate,
   onNoteAdd,
   onNoteDelete,
+  onNoteSplit,
+  onNoteQuantize,
+  onSnapChange,
   snap = 0.25,
   playheadBeat = null,
   readOnly = false,
@@ -51,6 +64,17 @@ export default function PianoRoll({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const drag = useRef<DragState | null>(null)
+  const veloRef = useRef<HTMLCanvasElement>(null)
+
+  // B3: 量化工具条状态
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [activeSnap, setActiveSnap] = useState(snap ?? 0.25)
+
+  // B4: 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
+
+  // B5: 力度通道高度
+  const VELO_H = 60
 
   const lo = notes.length ? Math.min(...notes.map((n) => n.midi)) - 2 : 48
   const hi = notes.length ? Math.max(...notes.map((n) => n.midi)) + 2 : 72
@@ -319,25 +343,228 @@ export default function PianoRoll({
 
   const onContextMenu = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (readOnly || !onNoteDelete) return
+      if (readOnly) return
       e.preventDefault()
       const rect = e.currentTarget.getBoundingClientRect()
       const hit = hitTest(e.clientX - rect.left, e.clientY - rect.top)
-      if (hit) onNoteDelete(hit.note.id)
+      if (hit) {
+        onSelect?.(hit.note)
+        setContextMenu({ x: e.clientX, y: e.clientY, noteId: hit.note.id })
+      } else {
+        setContextMenu({ x: e.clientX, y: e.clientY, noteId: null })
+      }
     },
-    [hitTest, onNoteDelete, readOnly],
+    [hitTest, onSelect, readOnly],
   )
 
+  // B4: 关闭右键菜单
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [contextMenu])
+
+  // B4: 右键菜单操作
+  const handleMenuAction = (action: string) => {
+    if (!contextMenu?.noteId) {
+      setContextMenu(null)
+      return
+    }
+    const noteId = contextMenu.noteId
+    setContextMenu(null)
+    switch (action) {
+      case 'delete':
+        onNoteDelete?.(noteId)
+        break
+      case 'split':
+        onNoteSplit?.(noteId)
+        break
+      case 'quantize':
+        onNoteQuantize?.(noteId, activeSnap)
+        break
+    }
+  }
+
+  // B5: 绘制力度包络画布
+  const drawVelocityLane = useCallback(() => {
+    const canvas = veloRef.current
+    if (!canvas || !notes.length) return
+    const dpr = window.devicePixelRatio || 1
+    const wrapW = wrapRef.current?.clientWidth || W
+    canvas.width = wrapW * dpr
+    canvas.height = VELO_H * dpr
+    canvas.style.width = wrapW + 'px'
+    canvas.style.height = VELO_H + 'px'
+    const ctx = canvas.getContext('2d')!
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, wrapW, VELO_H)
+
+    const bg = dark ? '#1e293b' : '#f8fafc'
+    const grid = dark ? '#334155' : '#e2e8f0'
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, wrapW, VELO_H)
+
+    // 力度参考线（25/50/75/100）
+    const levels = [25, 50, 75, 100]
+    ctx.font = '9px ui-monospace, monospace'
+    ctx.textBaseline = 'middle'
+    for (const lv of levels) {
+      const y = VELO_H - (lv / 127) * VELO_H
+      ctx.strokeStyle = grid
+      ctx.lineWidth = 0.5
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(wrapW, y)
+      ctx.stroke()
+      ctx.fillStyle = dark ? '#64748b' : '#94a3b8'
+      ctx.fillText(`${lv}`, 2, y - 4)
+    }
+
+    // 画每个音符的力度点
+    notes.forEach((n) => {
+      const x = PAD_LEFT + n.startBeat * PX_PER_BEAT
+      const y = VELO_H - (n.velocity / 127) * VELO_H
+      ctx.fillStyle = velocityColor(n.velocity)
+      ctx.beginPath()
+      ctx.arc(x, y, 4, 0, Math.PI * 2)
+      ctx.fill()
+    })
+  }, [notes, dark])
+
+  // B5: 力度包络交互（拖动调整力度）
+  const handleVeloMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (readOnly || !onNoteUpdate) return
+      const rect = e.currentTarget.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      if (px < PAD_LEFT || py < 0 || py > VELO_H) return
+
+      // 找最近的音符
+      let closestNote: Note | null = null
+      let closestDist = Infinity
+      for (const n of notes) {
+        const nx = PAD_LEFT + n.startBeat * PX_PER_BEAT
+        const dist = Math.abs(nx - px)
+        if (dist < closestDist) {
+          closestDist = dist
+          closestNote = n
+        }
+      }
+      if (!closestNote || closestDist > 20) return
+
+      const move = (ev: MouseEvent) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        const vy = ev.clientY - r.top
+        const newVel = Math.max(1, Math.min(127, Math.round((1 - vy / VELO_H) * 127)))
+        onNoteUpdate(closestNote!.id, { velocity: newVel })
+      }
+      const up = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+    },
+    [notes, onNoteUpdate, readOnly],
+  )
+
+  useEffect(() => {
+    drawVelocityLane()
+  }, [drawVelocityLane])
+
+  const SNAP_OPTIONS = [
+    { label: '1/4', value: 1 },
+    { label: '1/8', value: 0.5 },
+    { label: '1/16', value: 0.25 },
+    { label: '1/32', value: 0.125 },
+  ]
+
   return (
-    <div ref={wrapRef} className="w-full overflow-auto border rounded bg-white dark:bg-gray-900 dark:border-gray-700" style={{ maxHeight: 340 }}>
-      <canvas
-        ref={canvasRef}
-        onMouseDown={onMouseDown}
-        onDoubleClick={onDoubleClick}
-        onContextMenu={onContextMenu}
-        className={`block ${readOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
-        title="拖动音符改音高/位置；拖右边缘改时值；双击空白加音符；右键删除"
-      />
+    <div className="flex flex-col">
+      {/* B3: 量化工具条 */}
+      <div className="flex items-center gap-3 px-2 py-1 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700 rounded-t">
+        <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+          <span>🧲</span>
+          <span>量化</span>
+        </span>
+        <button
+          onClick={() => { setSnapEnabled(!snapEnabled); onSnapChange?.(activeSnap) }}
+          className={`w-8 h-6 text-xs rounded ${snapEnabled ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}
+          title="吸附开关"
+        >
+          {snapEnabled ? '开' : '关'}
+        </button>
+        <div className="flex gap-1">
+          {SNAP_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { setActiveSnap(opt.value); setSnapEnabled(true); onSnapChange?.(opt.value) }}
+              className={`px-2 py-0.5 text-xs rounded ${activeSnap === opt.value && snapEnabled ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 主画布区 */}
+      <div ref={wrapRef} className="overflow-auto border-x border-b bg-white dark:bg-gray-900 dark:border-gray-700" style={{ maxHeight: 280 }}>
+        <canvas
+          ref={canvasRef}
+          onMouseDown={onMouseDown}
+          onDoubleClick={onDoubleClick}
+          onContextMenu={onContextMenu}
+          className={`block ${readOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
+          title="拖动音符改音高/位置；拖右边缘改时值；双击空白加音符；右键菜单"
+        />
+      </div>
+
+      {/* B5: 力度包络画布 */}
+      <div className="border-x border-b rounded-b overflow-hidden" style={{ height: VELO_H }}>
+        <canvas
+          ref={veloRef}
+          onMouseDown={handleVeloMouseDown}
+          className={`block ${readOnly ? 'cursor-pointer' : 'cursor-ns-resize'}`}
+          title="拖动力度点调整力度"
+        />
+      </div>
+
+      {/* B4: 右键菜单 */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-32"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.noteId ? (
+            <>
+              <button
+                onClick={() => handleMenuAction('split')}
+                className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200"
+              >
+                ✂️ 分割
+              </button>
+              <button
+                onClick={() => handleMenuAction('quantize')}
+                className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200"
+              >
+                🧲 量化到当前步长
+              </button>
+              <div className="h-px bg-gray-200 dark:bg-gray-600 my-1" />
+              <button
+                onClick={() => handleMenuAction('delete')}
+                className="w-full px-3 py-1.5 text-xs text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+              >
+                🗑 删除
+              </button>
+            </>
+          ) : (
+            <div className="px-3 py-1.5 text-xs text-gray-400">无选中音符</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

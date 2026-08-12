@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { listSkills, runSkill, type SkillInfo } from '../../services/api'
+import { getFavorites, toggleFavorite, type FavoriteSkill } from '../../services/favorites'
 
 // 参数元数据接口
 export interface ParamSchema {
@@ -293,12 +294,24 @@ export default function SkillPanel() {
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // P6-2: 收藏状态
+  const [favorites, setFavorites] = useState<FavoriteSkill[]>([])
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
 
   const [openName, setOpenName] = useState<string | null>(null)
   const [args, setArgs] = useState<Record<string, ParamValue>>({})
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<RunResult | null>(null)
   const [resultSkill, setResultSkill] = useState<string | null>(null)
+
+  // 加载收藏列表
+  const loadFavorites = useCallback(() => {
+    setFavorites(getFavorites())
+  }, [])
+
+  useEffect(() => {
+    loadFavorites()
+  }, [loadFavorites])
 
   useEffect(() => {
     setLoading(true)
@@ -308,6 +321,22 @@ export default function SkillPanel() {
       .catch((e) => setError(String(e?.message || e)))
       .finally(() => setLoading(false))
   }, [])
+
+  // P6-2: 切换收藏状态
+  const handleToggleFavorite = useCallback((skill: SkillInfo) => {
+    toggleFavorite(skill)
+    loadFavorites()
+  }, [loadFavorites])
+
+  // P6-2: 判断是否已收藏
+  const isFavoriteSkill = useCallback((name: string) => {
+    return favorites.some((f) => f.name === name)
+  }, [favorites])
+
+  // 过滤显示的技能
+  const displayedSkills = showFavoritesOnly
+    ? skills.filter((s) => isFavoriteSkill(s.name))
+    : skills
 
   const startRun = (s: SkillInfo) => {
     setOpenName(s.name)
@@ -347,13 +376,36 @@ export default function SkillPanel() {
 
   return (
     <div className="h-full overflow-y-auto p-4">
+      {/* P6-2: 收藏过滤栏 */}
+      <div className="flex items-center gap-3 mb-4 pb-3 border-b dark:border-gray-700">
+        <span className="text-sm text-gray-600 dark:text-gray-300">技能列表</span>
+        <span className="text-xs text-gray-400">({displayedSkills.length})</span>
+        <button
+          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          className={`ml-auto text-xs px-3 py-1 rounded-full transition-colors ${
+            showFavoritesOnly
+              ? 'bg-yellow-100 text-yellow-700 border border-yellow-300 dark:bg-yellow-900 dark:text-yellow-200'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}
+        >
+          {showFavoritesOnly ? '★ 只看收藏' : '☆ 收藏'}
+          {favorites.length > 0 && !showFavoritesOnly && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-yellow-400 text-yellow-900 text-[10px]">
+              {favorites.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {loading && <div className="text-sm text-gray-400">加载技能列表…</div>}
       {error && <div className="text-sm text-red-400">{error}</div>}
-      {!loading && !error && skills.length === 0 && (
-        <div className="text-sm text-gray-400">未扫描到技能（检查 .workbuddy/skills/*/SKILL.md）</div>
+      {!loading && !error && displayedSkills.length === 0 && (
+        <div className="text-sm text-gray-400">
+          {showFavoritesOnly ? '暂无收藏技能' : '未扫描到技能（检查 .workbuddy/skills/*/SKILL.md）'}
+        </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {skills.map((s) => {
+        {displayedSkills.map((s) => {
           const isOpen = openName === s.name
           const paramKeys = s.params ? Object.keys(s.params) : []
           return (
@@ -372,6 +424,18 @@ export default function SkillPanel() {
                     纯提示词
                   </span>
                 )}
+                {/* P6-2: 收藏按钮 */}
+                <button
+                  onClick={() => handleToggleFavorite(s)}
+                  className={`ml-auto text-lg ${
+                    isFavoriteSkill(s.name)
+                      ? 'text-yellow-400 hover:text-yellow-500'
+                      : 'text-gray-300 hover:text-yellow-400'
+                  }`}
+                  title={isFavoriteSkill(s.name) ? '取消收藏' : '收藏'}
+                >
+                  {isFavoriteSkill(s.name) ? '★' : '☆'}
+                </button>
               </div>
               {s.description && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3">{s.description}</p>
