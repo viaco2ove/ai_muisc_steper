@@ -45,47 +45,60 @@ def _parse_frontmatter(text: str) -> dict:
 
 
 class AgentCore:
-    def __init__(self, workbuddy_dir: Path = None, workspace_dir: Path = None):
+    def __init__(self, workbuddy_dir: Path = None, workspace_dir: Path = None,
+                 backend_skills_dir: Path = None):
         self.wb_dir = Path(workbuddy_dir or config.workbuddy_dir)
         self.ws_dir = Path(workspace_dir or config.workspace_dir)
-        self.skills_dir = self.wb_dir / "skills"
+        self.skills_dir = self.wb_dir / "skills"           # 公用技能
+        self.backend_skills_dir = Path(backend_skills_dir or config.backend_skills_dir)  # 专用技能
         self.skills: dict = {}
         self.scan()
 
     # ---------------------------------------------------------------- 扫描
     def scan(self) -> dict:
-        """启动时遍历 .workbuddy/skills/*/SKILL.md，读 frontmatter"""
+        """扫描 .workbuddy/skills（公用）与 backend/skills（专用），读 frontmatter。
+        专用技能标记 dedicated=True，默认不进 list_skills（技能面板）。"""
         self.skills = {}
-        if not self.skills_dir.exists():
-            return self.skills
-        for sd in sorted(self.skills_dir.iterdir()):
-            if not sd.is_dir():
+        shared_dirs = {self.skills_dir.resolve()}
+        for skills_dir, is_dedicated in (
+            (self.skills_dir, False),
+            (self.backend_skills_dir, True),
+        ):
+            if not skills_dir.exists():
                 continue
-            sm = sd / "SKILL.md"
-            if not sm.exists():
-                continue
-            try:
-                text = sm.read_text(encoding="utf-8")
-            except Exception:
-                continue
-            meta = _parse_frontmatter(text)
-            name = meta.get("name", sd.name)
-            scripts_dir = sd / "scripts"
-            scripts = [s.name for s in scripts_dir.glob("*.py")] if scripts_dir.exists() else []
-            self.skills[name] = {
-                "name": name,
-                "description": meta.get("description", "").strip('"').strip("'"),
-                "triggers": meta.get("触发词", ""),
-                "entry_script": meta.get("entry_script", "").strip('"').strip("'"),
-                "params": meta.get("params", {}) if isinstance(meta.get("params"), dict) else {},
-                "executable": meta.get("executable", False),
-                "dir": str(sd),
-                "scripts": scripts,
-            }
+            for sd in sorted(skills_dir.iterdir()):
+                if not sd.is_dir():
+                    continue
+                sm = sd / "SKILL.md"
+                if not sm.exists():
+                    continue
+                try:
+                    text = sm.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                meta = _parse_frontmatter(text)
+                name = meta.get("name", sd.name)
+                scripts_dir = sd / "scripts"
+                scripts = [s.name for s in scripts_dir.glob("*.py")] if scripts_dir.exists() else []
+                self.skills[name] = {
+                    "name": name,
+                    "description": meta.get("description", "").strip('"').strip("'"),
+                    "triggers": meta.get("触发词", ""),
+                    "entry_script": meta.get("entry_script", "").strip('"').strip("'"),
+                    "params": meta.get("params", {}) if isinstance(meta.get("params"), dict) else {},
+                    "executable": meta.get("executable", False),
+                    "dir": str(sd),
+                    "scripts": scripts,
+                    "dedicated": is_dedicated and sd.resolve() not in shared_dirs,
+                }
         return self.skills
 
-    def list_skills(self) -> list:
-        return list(self.skills.values())
+    def list_skills(self, exclude_dedicated: bool = True) -> list:
+        """技能面板用：默认排除专用技能。run_skill/get_skill 仍可按名取到专用技能。"""
+        return [
+            s for s in self.skills.values()
+            if not (exclude_dedicated and s.get("dedicated"))
+        ]
 
     def get_skill(self, name: str) -> Optional[dict]:
         return self.skills.get(name)

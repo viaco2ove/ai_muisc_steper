@@ -78,6 +78,15 @@ export async function renameProject(name: string, newName: string): Promise<{ st
   return res.json()
 }
 
+export async function updateProject(name: string, data: Record<string, string | number>): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/project/${encodeName(name)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`updateProject failed: ${res.status}`)
+}
+
 // Track APIs
 export interface TrackInfo {
   id: string

@@ -76,6 +76,13 @@ def list_files(name: str):
     return pm.list_files(name)
 
 
+@router.patch("/project/{name}")
+def update_project(name: str, data: dict):
+    """更新工程基本信息"""
+    # TODO: 实现更新 project.md 或 song_engineer.json
+    return {"status": "ok", "updated": data}
+
+
 # 文件预览/下载：返回原始文件流，按扩展名决定媒体类型
 _MIME = {
     "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg", "m4a": "audio/mp4",

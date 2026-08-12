@@ -1,4 +1,3 @@
-
 interface BasicInfoProps {
   bpm?: string | number
   key?: string
@@ -19,12 +18,12 @@ export default function BasicInfo({ bpm, key, style, mood, time_signature, langu
   ]
   return (
     <div className="border rounded-lg p-4">
-      <h3 className="font-medium text-gray-700 mb-3">基本信息</h3>
+      <h3 className="font-medium text-gray-700 mb-3 dark:text-gray-200">基本信息</h3>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
         {items.map(({ label, value }) => (
           <div key={label}>
-            <span className="text-gray-500">{label}: </span>
-            <span className="font-medium">{value}</span>
+            <span className="text-gray-500 dark:text-gray-400">{label}: </span>
+            <span className="font-medium dark:text-gray-100">{value}</span>
           </div>
         ))}
       </div>

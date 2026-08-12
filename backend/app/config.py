@@ -26,6 +26,8 @@ class Config:
     workbuddy_dir = ROOT / ".workbuddy"
     workspace_dir = ROOT / "workspace"
     project_dir = workspace_dir / "project"
+    # agent core 专用技能目录（与 .workbuddy/skills 公用技能隔离，不进 技能面板）
+    backend_skills_dir = ROOT / "backend" / "skills"
 
     # 服务
     host = os.getenv("BACKEND_HOST", "127.0.0.1")

@@ -38,7 +38,8 @@ _pm = ProjectManager()
 _core = AgentCore()
 
 # v2: ReAct AgentLoop (Native Tool Calling)
-_tool_registry = ToolRegistry(config.workbuddy_dir / "skills")
+# 合并扫描 公用(.workbuddy/skills) + 专用(backend/skills) 技能
+_tool_registry = ToolRegistry([config.workbuddy_dir / "skills", config.backend_skills_dir])
 _sandbox_executor = SandboxExecutor(
     config.workbuddy_dir,
     config.workspace_dir,

@@ -15,6 +15,7 @@ class SkillMeta:
     skill_dir: Optional[Path] = None
     scripts: List[str] = field(default_factory=list)
     triggers: str = ""
+    dedicated: bool = False  # True=agent core 专用（backend/skills），不进 技能面板
 
     def to_openai_function_schema(self) -> Dict[str, Any]:
         """编译为 OpenAI Function Calling 格式"""

@@ -15,7 +15,7 @@ cd backend
 cd frontend
 npm run dev
 ```
-- 前端: http://127.0.0.1:5175
+- 前端: http://127.0.0.1:5183
 - 后端: http://127.0.0.1:8120  (API文档: http://127.0.0.1:8120/docs)
 
 ## 环境配置

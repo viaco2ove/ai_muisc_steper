@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { useAudioRecorder } from '../../hooks/useAudioRecorder'
 import { uploadAudio } from '../../services/api'
 import ToolCallCard from './ToolCallCard'
+import MarkdownView from '../common/MarkdownView'
 
 export default function ChatPanel() {
   const { chat, audioPath, setAudioPath, currentProject, addChat, aiBusy, wsStatus } = useProjectStore()
@@ -257,7 +258,7 @@ function MessageBubble({ message }: { message: { id: string; role: string; msg: 
   return (
     <div className="flex justify-start">
       <div className="bg-white border rounded-lg px-4 py-2 max-w-[80%] shadow-sm text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-        <p className="text-sm whitespace-pre-wrap">{msg}</p>
+        <MarkdownView content={msg} />
       </div>
     </div>
   )
