@@ -4,6 +4,8 @@
 // - P2-6: ThoughtBlock 折叠（reasoning 默认折叠，完成时收起）
 // - P2-9: PromptChips 快捷指令
 // - P2-10: Drag & Drop 上传 + 进度
+// - /: SkillAutocomplete 技能选择浮动框
+// - 历史对话: SessionSidebar
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -12,9 +14,11 @@ import { wsClient } from '../../services/wsClient'
 import ToolCallCard from './ToolCallCard'
 import MarkdownView from '../common/MarkdownView'
 import PromptChips from './PromptChips'
+import SkillAutocomplete from './SkillAutocomplete'
+import SessionSidebar from './SessionSidebar'
 
 export default function ChatPanel() {
-  const { chat, audioPath, setAudioPath, currentProject, addChat, aiBusy, wsStatus } = useProjectStore()
+  const { chat, audioPath, setAudioPath, currentProject, addChat, aiBusy, wsStatus, clearChat } = useProjectStore()
   const { sendChat } = useWebSocket()
   const { recording, audioBlob, start, stop, reset } = useAudioRecorder()
   const [input, setInput] = useState('')
@@ -24,6 +28,12 @@ export default function ChatPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   // P2-4: sending 状态
   const [sending, setSending] = useState(false)
+  // /: SkillAutocomplete 状态
+  const [showSkillAutocomplete, setShowSkillAutocomplete] = useState(false)
+  const [skillQuery, setSkillQuery] = useState('')
+  // 历史对话管理
+  const [showSessionSidebar, setShowSessionSidebar] = useState(false)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
 
   // P2-4: 订阅 wsClient.sending 状态
   useEffect(() => {
@@ -279,16 +289,34 @@ export default function ChatPanel() {
       </div>
 
       {/* Input area */}
-      <div className="p-3 border-t bg-white dark:bg-gray-800 dark:border-gray-700">
+      <div className="p-3 border-t bg-white dark:bg-gray-800 dark:border-gray-700 relative">
         <div className="flex gap-2">
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value
+              setInput(val)
+              // / 触发技能自动补全
+              if (val.startsWith('/')) {
+                const q = val.slice(1).split(' ')[0] || ''
+                setSkillQuery(q)
+                setShowSkillAutocomplete(true)
+              } else {
+                setShowSkillAutocomplete(false)
+              }
+            }}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter发送)"
+            placeholder="输入消息... (/ 触发技能选择)"
             className="flex-1 resize-none border rounded-md px-3 py-2 text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
             rows={2}
           />
+          <button
+            onClick={() => setShowSessionSidebar(true)}
+            className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+            title="历史对话"
+          >
+            📚
+          </button>
           <button
             onClick={() => handleSend()}
             disabled={(!input.trim() && !audioPath) || sending}
@@ -298,6 +326,34 @@ export default function ChatPanel() {
           </button>
         </div>
       </div>
+
+      {/* / 触发技能选择浮动框 */}
+      {showSkillAutocomplete && (
+        <SkillAutocomplete
+          query={skillQuery}
+          onSelect={(skill) => {
+            // 将技能名插入到输入框（去掉 / 前缀）
+            setInput(`调用 ${skill.name} `)
+            setShowSkillAutocomplete(false)
+          }}
+          onClose={() => setShowSkillAutocomplete(false)}
+        />
+      )}
+
+      {/* 历史对话侧栏 */}
+      {showSessionSidebar && (
+        <SessionSidebar
+          currentSessionId={currentSessionId}
+          onSelectSession={(sid, msgs) => {
+            setCurrentSessionId(sid)
+            clearChat()
+            msgs.forEach((m) => addChat(m))
+            setShowSessionSidebar(false)
+          }}
+          onClose={() => setShowSessionSidebar(false)}
+          messages={chat}
+        />
+      )}
     </div>
   )
 }
