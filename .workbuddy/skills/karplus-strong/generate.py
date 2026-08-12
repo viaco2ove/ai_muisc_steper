@@ -378,12 +378,19 @@ def generate_audio(data, output_wav_path, tempo):
 
 def main():
     parser = argparse.ArgumentParser(description=' karplus 吉他合成器')
-    parser.add_argument('song', help='歌曲名 (如 走在)')
-    parser.add_argument('track_id', help='轨道ID (如 08, 08_节奏吉他)')
+    parser.add_argument('song', nargs='?', default=None, help='歌曲名 (如 走在)')
+    parser.add_argument('track_id', nargs='?', default=None, help='轨道ID (如 08, 08_节奏吉他)')
+    parser.add_argument('--project', dest='project', default=None, help='歌曲名（与 song 等价，供面板/技能调用）')
+    parser.add_argument('--track', dest='track', default=None, help='轨道ID（与 track_id 等价）')
     parser.add_argument('--json-only', action='store_true', help='只生成 JSON')
     parser.add_argument('--wav-only', action='store_true', help='只生成 WAV')
 
     args = parser.parse_args()
+    # 兼容面板调用（--project/--track）与 CLI 位置参数（song/track_id）
+    args.song = args.project or args.song
+    args.track_id = args.track or args.track_id
+    if not args.song or not args.track_id:
+        parser.error('必须提供 歌曲名(--project/--song) 与 轨道ID(--track/--track_id)')
 
     print("=" * 60)
     print(" karplus 吉他合成器")

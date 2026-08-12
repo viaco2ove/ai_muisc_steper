@@ -1,5 +1,6 @@
-"""project 路由：工程 CRUD + 单轨读写"""
-from fastapi import APIRouter, HTTPException
+"""project 路由：工程 CRUD + 单轨读写 + 文件浏览/预览"""
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from ..schemas.schemas import NewProjectReq, SaveTrackReq
 from ..core.project_manager import ProjectManager
@@ -57,6 +58,36 @@ def save_track(name: str, tid: str, req: SaveTrackReq):
 @router.get("/project/{name}/files")
 def list_files(name: str):
     return pm.list_files(name)
+
+
+# 文件预览/下载：返回原始文件流，按扩展名决定媒体类型
+_MIME = {
+    "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg", "m4a": "audio/mp4",
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
+    "svg": "image/svg+xml", "webp": "image/webp",
+    "json": "application/json", "md": "text/markdown; charset=utf-8",
+    "txt": "text/plain; charset=utf-8", "csv": "text/csv; charset=utf-8",
+    "mscx": "application/xml", "xml": "application/xml", "ustx": "application/xml",
+    "mid": "audio/midi", "midi": "audio/midi",
+}
+
+
+@router.get("/project/{name}/file")
+def get_file(name: str, path: str = Query(..., description="工程内相对路径")):
+    base = pm.pdir / name
+    if not base.exists():
+        raise HTTPException(404, f"工程不存在: {name}")
+    target = (base / path).resolve()
+    # 防穿越：target 必须仍在 base 内
+    try:
+        target.relative_to(base.resolve())
+    except ValueError:
+        raise HTTPException(400, "非法路径：超出工程目录")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(404, "文件不存在")
+    ext = target.suffix.lower().lstrip(".")
+    mime = _MIME.get(ext, "application/octet-stream")
+    return FileResponse(str(target), media_type=mime, filename=target.name)
 
 
 @router.delete("/project/{name}")

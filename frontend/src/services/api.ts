@@ -149,6 +149,11 @@ export async function listFiles(projectName: string): Promise<ProjectFile[]> {
   return res.json()
 }
 
+/** 工程内文件预览/下载 URL（后端 /api/project/{name}/file?path=...） */
+export function fileUrl(projectName: string, path: string): string {
+  return `${BASE_URL}/api/project/${encodeName(projectName)}/file?path=${encodeURIComponent(path)}`
+}
+
 export interface SkillInfo {
   name: string
   description?: string

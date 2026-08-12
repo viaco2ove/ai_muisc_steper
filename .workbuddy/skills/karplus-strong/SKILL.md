@@ -1,3 +1,11 @@
+---
+name: karplus-strong
+description: Karplus-Strong 物理建模合成吉他音频——基于轨道 JSON 数据生成 .json 中间文件与 .wav 音频（真实本地合成，无需 GPU）。
+executable: true
+entry_script: "generate.py"
+params: {"project": "歌曲名(required)", "track": "轨道ID(required)"}
+---
+
 #  karplus 音频生成技能
 
 基于 JSON 数据使用 Karplus-Strong 物理建模合成吉他音频。

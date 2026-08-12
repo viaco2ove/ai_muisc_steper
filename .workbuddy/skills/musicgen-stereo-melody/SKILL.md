@@ -1,3 +1,11 @@
+---
+name: musicgen-stereo-melody
+description: 立体声旋律音频生成——基于轨道 JSON 数据用 Karplus-Strong 物理建模合成吉他音频（本地合成，无 GPU 依赖）。
+executable: true
+entry_script: "generate_local.py"
+params: {"project": "歌曲名(required)", "track": "轨道ID(required)"}
+---
+
 # MusicGen 音频生成技能
 
 基于 JSON 数据使用 Karplus-Strong 物理建模合成吉他音频。

@@ -1,3 +1,11 @@
+---
+name: ai_chords_master
+description: 沙发小曲和弦编曲与创作技能——基于用户给定基础和弦与哼唱旋律，生成和弦进行/段落设计/编曲建议。
+executable: false
+entry_script: ""
+params: {}
+---
+
 # ai_chords_master — 沙发小曲编曲与创作技能
 
 ## 触发词

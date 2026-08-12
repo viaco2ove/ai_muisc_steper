@@ -11,6 +11,8 @@ import ExportPanel from './ExportPanel'
 import MixView from './MixView'
 import ArrangeView from './ArrangeView'
 import NoteEditor from './NoteEditor'
+import FileBrowser from './FileBrowser'
+import SkillPanel from './SkillPanel'
 import { chordToMidiNotes } from '../../utils/chordRender'
 import { MIX_TRACKS, type MixTrack } from '../../utils/trackModel'
 
@@ -359,21 +361,10 @@ export default function WorkspacePanel() {
         )}
 
         {currentProject && activeTab === '文件' && (
-          <div className="h-full overflow-y-auto p-6 text-sm text-gray-500">
-            <p className="font-medium text-gray-700 mb-2">文件浏览器</p>
-            <p>后端接口 <code className="bg-gray-100 px-1 rounded">GET /api/project/{'{name}'}/files</code> 待接入。</p>
-            <p className="mt-1">接入后可浏览 song_engineer/、track/、ai-track/ 等目录并预览 .md/.json/.wav/.mid。</p>
-          </div>
+          <FileBrowser project={currentProject} />
         )}
 
-        {currentProject && activeTab === '技能' && (
-          <div className="h-full overflow-y-auto p-6 text-sm text-gray-500">
-            <p className="font-medium text-gray-700 mb-2">技能面板</p>
-            <p>后端接口 <code className="bg-gray-100 px-1 rounded">GET /api/skills</code> 待接入。</p>
-            <p className="mt-1">接入后可可视化运行 .workbuddy 技能（填参表单 + 日志复用 ToolCallCard）。</p>
-            <p className="mt-1 text-amber-600">⚠️ 先补齐 ai_chords_master / karplus-strong / musicgen-stereo-melody 的 frontmatter（当前缺失导致扫描不到）。</p>
-          </div>
-        )}
+        {currentProject && activeTab === '技能' && <SkillPanel />}
       </div>
     </div>
   )
