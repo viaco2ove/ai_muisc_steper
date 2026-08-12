@@ -21,7 +21,7 @@ start "Frontend" cmd /k "cd /d %~dp0\frontend && npm run dev"
 echo.
 echo ========================================
 echo   启动完成！
-echo   后端: http://127.0.0.1:9120
+echo   后端: http://127.0.0.1:8120
 echo   前端: http://localhost:5183
 echo ========================================
 echo.

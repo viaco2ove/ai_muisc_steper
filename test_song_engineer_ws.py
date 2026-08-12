@@ -5,7 +5,7 @@ import json
 import websockets
 import sys
 
-BACKEND_URL = "ws://127.0.0.1:9120/ws/chat"
+BACKEND_URL = "ws://127.0.0.1:8120/ws/chat"
 
 
 async def test():

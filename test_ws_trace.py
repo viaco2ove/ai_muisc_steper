@@ -4,7 +4,7 @@ import asyncio
 import json
 import websockets
 
-BACKEND_URL = "ws://127.0.0.1:9120/ws/chat"
+BACKEND_URL = "ws://127.0.0.1:8120/ws/chat"
 
 async def test():
     async with websockets.connect(BACKEND_URL, ping_interval=None) as ws:
