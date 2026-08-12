@@ -36,7 +36,8 @@ function inferParamType(key: string, config: ParamConfig): InferType {
   }
 
   // 从 placeholder/description 推断
-  const hint = typeof config === 'string' ? config : (config.description || config.placeholder || '')
+  const _hint = typeof config === 'string' ? config : (config.description || config.placeholder || '')
+  void _hint
   const keyLower = key.toLowerCase()
 
   // 从 key 名推断
@@ -259,7 +260,7 @@ function ArrayInput({ config, value, onChange }: { config: ParamSchema; value: s
 // 统一的参数输入组件
 function ParamInput({ keyName, config, value, onChange }: ParamInputProps) {
   const parsed = parseParamConfig(config)
-  const paramType = inferParamType(keyName, config)
+  const paramType = inferParamType(keyName, config ?? '')
 
   const handleStringChange = useCallback((v: string) => onChange(v), [onChange])
   const handleNumberChange = useCallback((v: number) => onChange(v), [onChange])
@@ -294,7 +295,7 @@ export default function SkillPanel() {
   const [error, setError] = useState<string | null>(null)
 
   const [openName, setOpenName] = useState<string | null>(null)
-  const [args, setArgs] = useState<Record<string, string>>({})
+  const [args, setArgs] = useState<Record<string, ParamValue>>({})
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<RunResult | null>(null)
   const [resultSkill, setResultSkill] = useState<string | null>(null)
@@ -315,15 +316,21 @@ export default function SkillPanel() {
     setResultSkill(null)
   }
 
+  // 处理参数值变更
+  const handleArgChange = (key: string, value: ParamValue) => {
+    setArgs((a) => ({ ...a, [key]: value }))
+  }
+
   const doRun = async (s: SkillInfo) => {
     setRunning(true)
     setResult(null)
     setResultSkill(null)
     try {
-      // 把空串参数过滤掉，避免污染技能
-      const clean: Record<string, string> = {}
+      // 把空/空数组参数过滤掉，避免污染技能
+      const clean: Record<string, any> = {}
       for (const [k, v] of Object.entries(args)) {
-        if (v.trim() === '') continue
+        if (v === undefined || v === null || v === '') continue
+        if (Array.isArray(v) && v.length === 0) continue
         clean[k] = v
       }
       const r = await runSkill(s.name, clean)
@@ -383,18 +390,16 @@ export default function SkillPanel() {
               )}
 
               {isOpen && s.executable && (
-                <div className="border-t pt-2 mt-1 flex flex-col gap-2">
+                <div className="border-t pt-2 mt-1 flex flex-col gap-3">
                   {paramKeys.length > 0 ? (
                     paramKeys.map((k) => (
-                      <label key={k} className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
-                        <span className="font-mono">{k}</span>
-                        <input
-                          value={args[k] || ''}
-                          onChange={(e) => setArgs((a) => ({ ...a, [k]: e.target.value }))}
-                          placeholder={String(s.params?.[k] ?? '')}
-                          className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                        />
-                      </label>
+                      <ParamInput
+                        key={k}
+                        keyName={k}
+                        config={s.params?.[k]}
+                        value={args[k]}
+                        onChange={(v) => handleArgChange(k, v)}
+                      />
                     ))
                   ) : (
                     <p className="text-[11px] text-gray-400">该技能无声明参数（将用默认配置运行）。</p>

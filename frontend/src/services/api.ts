@@ -171,12 +171,30 @@ export function fileUrl(projectName: string, path: string): string {
   return `${BASE_URL}/api/project/${encodeName(projectName)}/file?path=${encodeURIComponent(path)}`
 }
 
+// 参数元数据接口（前端定义，便于类型推断）
+export interface ParamSchema {
+  type?: 'string' | 'number' | 'boolean' | 'array'  // 参数类型，默认 string
+  description?: string  // 参数描述
+  placeholder?: string  // 占位符文本
+  required?: boolean    // 是否必填
+  default?: any         // 默认值
+  options?: string[]    // 用于 array 或 enum 类型的选项列表
+  min?: number          // 用于 number 类型的最小值
+  max?: number          // 用于 number 类型的最大值
+  step?: number         // 用于 number 类型的步进值
+  tags?: boolean        // 用于 array 类型，true 为标签输入模式，false 为多选框
+}
+
+// 统一的参数配置类型（兼容旧格式 string）
+export type ParamConfig = ParamSchema | string
+
 export interface SkillInfo {
   name: string
   description?: string
   executable?: boolean
   entry_script?: string
-  params?: Record<string, string>
+  // 扩展的参数配置：可以是简单的占位符字符串（向后兼容）或完整的 ParamSchema
+  params?: Record<string, ParamConfig>
 }
 
 export async function listSkills(): Promise<SkillInfo[]> {

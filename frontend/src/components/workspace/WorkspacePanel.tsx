@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { useUiStore } from '../../store/uiStore'
 import { useToast } from '../common/Toast'
-import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, copyProject, createTrack, deleteTrack } from '../../services/api'
+import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, copyProject, createTrack, deleteTrack, reorderTrack } from '../../services/api'
 import BasicInfo from './BasicInfo'
 import SectionTable from './SectionTable'
 import TrackEditor from './TrackEditor'
@@ -36,6 +36,8 @@ export default function WorkspacePanel() {
   const [trackMd, setTrackMd] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [mixView, setMixView] = useState<'mix' | 'arrange'>('mix')
+  // 轨道排序状态（存储轨道ID顺序）
+  const [trackOrder, setTrackOrder] = useState<string[]>(MIX_TRACKS.map((t) => t.id))
 
   useEffect(() => {
     listProjects()
@@ -191,6 +193,37 @@ export default function WorkspacePanel() {
     }
   }, [currentProject, toast])
 
+  const handleReorderTrack = useCallback(
+    async (direction: 'up' | 'down') => {
+      if (!currentProject || !selectedTrackId) {
+        toast.info('请先选中要排序的轨道')
+        return
+      }
+      const idx = trackOrder.indexOf(selectedTrackId)
+      if (direction === 'up' && idx <= 0) {
+        toast.info('已在最顶部，无法上移')
+        return
+      }
+      if (direction === 'down' && idx >= trackOrder.length - 1) {
+        toast.info('已在最底部，无法下移')
+        return
+      }
+      const newOrder = [...trackOrder]
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+      // 交换位置
+      ;[newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]]
+      try {
+        // 尝试调用后端API，后端未实现时前端本地处理
+        await reorderTrack(currentProject, selectedTrackId, direction, trackOrder)
+      } catch {
+        // 后端未实现，前端本地处理（静默忽略错误）
+      }
+      setTrackOrder(newOrder)
+      toast.success(`${direction === 'up' ? '上移' : '下移'}轨道: ${selectedTrackId}`)
+    },
+    [currentProject, selectedTrackId, trackOrder, toast],
+  )
+
   // 数据提取
   const sections: Section[] = projectData?.sections || []
   const basic = (projectData as any)?.basic || (projectData as any)?.meta || {}
@@ -315,12 +348,28 @@ export default function WorkspacePanel() {
                 + 添加轨道
               </button>
               {selectedTrackId && (
-                <button
-                  onClick={() => handleDeleteTrack(selectedTrackId)}
-                  className="px-3 py-1.5 bg-red-500 text-white rounded-md text-xs hover:bg-red-600 transition"
-                >
-                  删除选中轨道
-                </button>
+                <>
+                  <button
+                    onClick={() => handleReorderTrack('up')}
+                    className="px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs hover:bg-blue-600 transition"
+                    title="上移轨道"
+                  >
+                    上移
+                  </button>
+                  <button
+                    onClick={() => handleReorderTrack('down')}
+                    className="px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs hover:bg-blue-600 transition"
+                    title="下移轨道"
+                  >
+                    下移
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTrack(selectedTrackId)}
+                    className="px-3 py-1.5 bg-red-500 text-white rounded-md text-xs hover:bg-red-600 transition"
+                  >
+                    删除选中轨道
+                  </button>
+                </>
               )}
               <span className="text-xs text-gray-400 ml-auto">
                 {selectedTrackId ? `选中: ${selectedTrackId}` : '点击轨道选中'}

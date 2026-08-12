@@ -123,7 +123,12 @@ export default function ChatPanel() {
   }, [currentProject])
 
   // 支持重发的发送函数
-  const handleSend = (messageText?: string) => {
+  const handleSend = (messageText?: string): void => {
+    void messageText
+    if (messageText !== undefined) {
+      // 重发：先把消息设到 input
+      setInput(messageText)
+    }
     const textToSend = messageText !== undefined ? messageText : input
     if (!textToSend.trim()) return
     // P2-4: 乐观插入用户消息，立即进列表（仅在新消息时添加）
@@ -144,6 +149,8 @@ export default function ChatPanel() {
   const handlePrompt = (prompt: string) => {
     setInput(prompt)
   }
+
+  // P3-9: 消息操作在 MessageBubble 内部直接处理 (复制/重发按钮)
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -283,7 +290,7 @@ export default function ChatPanel() {
             rows={2}
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={(!input.trim() && !audioPath) || sending}
             className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
