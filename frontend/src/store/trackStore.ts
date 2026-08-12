@@ -62,6 +62,9 @@ export interface PendingEdit {
   message: string
   applied: boolean
   source: 'backend' | 'demo'
+  // P4-1: 来自 WS ReAct 的 AI 调整（磁盘已写入 after，撤销=恢复备份，应用=确认）
+  wsOrigin?: boolean
+  backupId?: string
 }
 
 /**

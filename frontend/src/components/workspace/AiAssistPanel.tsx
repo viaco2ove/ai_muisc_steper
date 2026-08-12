@@ -1,13 +1,8 @@
 // D 层（LLM 协助）UI 面板：整轨指令 / 插入乐段 / 选中音符调整。
-// 纯前端演示，后端 D5 就绪后调用真实模型（见 services/aiAssist.ts）。
+// P4-1: AI 调整改走 WS 对话链路（受限 ReAct + 多步自纠错），不再直调 HTTP。
 import { useState } from 'react'
-import { Note } from '../../utils/noteModel'
-import {
-  requestTrackEdit,
-  requestInsertSection,
-  requestNoteEdit,
-  AI_DEMO_NOTE,
-} from '../../services/aiAssist'
+import { useProjectStore } from '../../store/projectStore'
+import { wsClient } from '../../services/wsClient'
 
 interface Props {
   project: string
@@ -15,37 +10,49 @@ interface Props {
   notes: Note[]
   selectedIds: string[]
   vocal?: boolean
-  // D3：拿到 AI 结果后不直接应用，发出预览（before/after），由对话区可回滚应用
-  onPreview: (before: Note[], after: Note[], message: string, source: 'backend' | 'demo') => void
   onToast: (msg: string, kind?: 'info' | 'success' | 'error') => void
 }
 
-const PRESET_NOTE = ['移调 +12（升八度）', '移调 -12（降八度）', '力度 +15', '力度 -15', '时值拉长 1.5x', '时值缩短 0.66x']
+// 局部引入 Note 类型仅为 props 标注
+import type { Note } from '../../utils/noteModel'
 
-export default function AiAssistPanel({ project, trackId, notes, selectedIds, vocal, onPreview, onToast }: Props) {
+const PRESET_NOTE = ['移调 +12（升八度）', '移调 -12（降八度）', '力度 +15', '力度 -15', '时值拉长 1.5x', '时值缩短 0.66x']
+const TONE_PRESET = ['气声多一点', '更紧张', '放松', '换成女声', '换成男声', '力度加强', '力度轻一点']
+
+export default function AiAssistPanel({ project, trackId, notes, selectedIds, vocal, onToast }: Props) {
   const [open, setOpen] = useState(false)
   const [instr, setInstr] = useState('')
   const [afterBar, setAfterBar] = useState(20)
   const [bars, setBars] = useState(4)
   const [noteInstr, setNoteInstr] = useState('')
-  const [busy, setBusy] = useState(false)
+  const aiBusy = useProjectStore((s) => s.aiBusy)
+  const setAiBusy = useProjectStore((s) => s.setAiBusy)
   // 选中音符的下标（后端 ai_* 技能按索引选取）
   const selIdx = selectedIds
     .map((id) => notes.findIndex((n) => n.id === id))
     .filter((i) => i >= 0)
 
-  async function run(fn: () => Promise<{ notes: Note[]; source: string; message: string }>) {
-    setBusy(true)
-    try {
-      const before = notes // 预览基准：当前音符
-      const res = await fn()
-      onPreview(before, res.notes, res.message, res.source === 'demo' ? 'demo' : 'backend')
-      onToast(res.message, res.source === 'demo' ? 'info' : 'success')
-    } catch (e: any) {
-      onToast(`AI 协助失败：${e?.message || e}`, 'error')
-    } finally {
-      setBusy(false)
+  function send(opts: { mode: 'track' | 'insert' | 'note'; instruction?: string; indices?: number[]; after_bar?: number; bars?: number }) {
+    if (!project || !trackId) {
+      onToast('请先选择工程与轨道', 'error')
+      return
     }
+    const ok = wsClient.sendAiAdjust({
+      project,
+      track: trackId,
+      instruction: opts.instruction || '',
+      mode: opts.mode,
+      indices: opts.indices,
+      vocal,
+      after_bar: opts.after_bar,
+      bars: opts.bars,
+    })
+    if (!ok) {
+      onToast('WS 未连接，无法发送 AI 调整', 'error')
+      return
+    }
+    setAiBusy(true)
+    onToast('已提交 AI 调整（WS ReAct 进行中…）', 'info')
   }
 
   return (
@@ -60,7 +67,8 @@ export default function AiAssistPanel({ project, trackId, notes, selectedIds, vo
       {open && (
         <div className="px-3 pb-3 space-y-3 text-xs">
           <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-            {AI_DEMO_NOTE}
+            AI 调整走 WS 对话链路（受限 ReAct + 多步自纠错）。调整结果会在对话区生成可回滚预览卡片，确认后写盘。
+            {aiBusy && <span className="ml-1 text-indigo-600">⏳ 调整中…</span>}
           </p>
 
           {/* 整轨指令 */}
@@ -74,12 +82,24 @@ export default function AiAssistPanel({ project, trackId, notes, selectedIds, vo
                 className="border rounded px-2 py-1 flex-1 bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
               />
               <button
-                disabled={busy}
-                onClick={() => run(() => requestTrackEdit(project, trackId, notes, instr))}
+                disabled={aiBusy}
+                onClick={() => send({ mode: 'track', instruction: instr })}
                 className="px-3 rounded bg-indigo-600 text-white disabled:opacity-40"
               >
                 应用
               </button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {PRESET_NOTE.map((p) => (
+                <button
+                  key={p}
+                  disabled={aiBusy}
+                  onClick={() => send({ mode: 'track', instruction: p })}
+                  className="px-2 py-1 rounded border border-indigo-200 bg-white text-indigo-700 dark:bg-gray-700 dark:text-indigo-300 dark:border-indigo-700 disabled:opacity-40 hover:bg-indigo-50 dark:hover:bg-gray-600"
+                >
+                  {p}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -106,8 +126,8 @@ export default function AiAssistPanel({ project, trackId, notes, selectedIds, vo
                 小节
               </label>
               <button
-                disabled={busy}
-                onClick={() => run(() => requestInsertSection(project, trackId, notes, afterBar, bars))}
+                disabled={aiBusy}
+                onClick={() => send({ mode: 'insert', after_bar: afterBar, bars })}
                 className="px-3 rounded bg-indigo-600 text-white disabled:opacity-40"
               >
                 生成
@@ -122,11 +142,11 @@ export default function AiAssistPanel({ project, trackId, notes, selectedIds, vo
               <span className="ml-1 text-gray-400">（已选 {selectedIds.length} 个）</span>
             </div>
             <div className="flex flex-wrap gap-1">
-              {PRESET_NOTE.map((p) => (
+              {(vocal ? TONE_PRESET : PRESET_NOTE).map((p) => (
                 <button
                   key={p}
-                  disabled={busy || !selIdx.length}
-                  onClick={() => run(() => requestNoteEdit(project, trackId, notes, selIdx, p, vocal))}
+                  disabled={aiBusy || !selIdx.length}
+                  onClick={() => send({ mode: 'note', instruction: p, indices: selIdx })}
                   className="px-2 py-1 rounded border border-indigo-200 bg-white text-indigo-700 dark:bg-gray-700 dark:text-indigo-300 dark:border-indigo-700 disabled:opacity-40 hover:bg-indigo-50 dark:hover:bg-gray-600"
                 >
                   {p}
@@ -141,8 +161,8 @@ export default function AiAssistPanel({ project, trackId, notes, selectedIds, vo
                 className="border rounded px-2 py-1 flex-1 bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
               />
               <button
-                disabled={busy || !selIdx.length}
-                onClick={() => run(() => requestNoteEdit(project, trackId, notes, selIdx, noteInstr, vocal))}
+                disabled={aiBusy || !selIdx.length}
+                onClick={() => send({ mode: 'note', instruction: noteInstr, indices: selIdx })}
                 className="px-3 rounded bg-indigo-600 text-white disabled:opacity-40"
               >
                 应用

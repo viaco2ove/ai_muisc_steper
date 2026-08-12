@@ -13,6 +13,9 @@ interface UiState {
   dirtyTracks: Record<string, boolean>
   markDirty: (id: string) => void
   clearDirty: (id: string) => void
+  // P4-3: 左聊天 / 右工作区分栏比例（百分比，持久化）
+  splitRatio: number
+  setSplitRatio: (r: number) => void
 }
 
 export const useUiStore = create<UiState>()(
@@ -30,6 +33,8 @@ export const useUiStore = create<UiState>()(
           delete next[id]
           return { dirtyTracks: next }
         }),
+      splitRatio: 40,
+      setSplitRatio: (r) => set({ splitRatio: Math.max(20, Math.min(80, r)) }),
     }),
     { name: 'ai-music-ui' },
   ),

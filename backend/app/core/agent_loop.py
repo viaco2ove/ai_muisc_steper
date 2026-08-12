@@ -10,7 +10,7 @@
 """
 import json
 import logging
-from typing import AsyncGenerator, List, Dict, Any
+from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from .schemas.events import AgentEvent, EventType
 from .schemas.tools import FunctionCallSpec
@@ -46,6 +46,8 @@ class AgentLoop:
         history: List[Dict[str, Any]] = None,
         interrupt_token: InterruptToken = None,
         ws_send=None,  # 兼容旧接口
+        extra_system: str = "",  # P4-1: 额外系统提示（如 AI 调整专用引导）
+        tool_names: Optional[List[str]] = None,  # P4-1: 受限工具集（仅暴露指定技能）
     ) -> None:
         """执行 ReAct 自主循环, 通过 ws_send 推送事件到前端"""
 
@@ -76,7 +78,19 @@ class AgentLoop:
         messages = self.context_mgr.build_initial_messages(
             user_prompt, project_name, history or []
         )
-        tools = self.registry.get_openai_tools_schema()
+        # P4-1: 注入 AI 调整专用系统提示（作为独立的 system 消息插在末尾）
+        if extra_system:
+            messages.append({"role": "system", "content": extra_system})
+
+        # 工具集：默认全部，受限模式只暴露指定技能
+        if tool_names:
+            tools = [
+                s.to_openai_function_schema()
+                for s in (self.registry.get(n) for n in tool_names)
+                if s is not None
+            ]
+        else:
+            tools = self.registry.get_openai_tools_schema()
 
         await emit(AgentEvent(type=EventType.CHAIN_START, payload={
             "tools": [t["function"]["name"] for t in tools]

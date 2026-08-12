@@ -1,5 +1,6 @@
 """main.py - FastAPI 入口 + WebSocket 对话 + API路由"""
 import json
+import uuid
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from .core.context_manager import ContextManager
 from .core.llm_client import get_llm
 from .core.interrupt_token import InterruptToken
 from .core.agent_loop import AgentLoop
+from .core.utils.prompt_templates import SYSTEM_PROMPT_AI_ADJUST
 from .core import noteconv
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,16 @@ async def ws_chat(ws: WebSocket):
             if msg.get("type") == "ping":
                 await ws.send_json({"type": "pong"})
                 continue
+            # P4-1: AI 调整走 WS 对话链路（受限 ReAct + 多步自纠错）
+            if msg.get("type") == "ai_adjust":
+                await _ws_ai_adjust(ws, msg)
+                continue
+            if msg.get("type") == "ai_adjust_undo":
+                await _ws_ai_adjust_undo(ws, msg)
+                continue
+            if msg.get("type") == "ai_adjust_apply":
+                await _ws_ai_adjust_apply(ws, msg)
+                continue
             if msg.get("type") != "chat":
                 continue
             user_msg = msg.get("msg", "")
@@ -115,6 +127,214 @@ async def ws_chat(ws: WebSocket):
             await ws.send_json({"type": "error", "msg": f"服务异常: {e}"})
         except Exception:
             pass
+
+
+# ----------------------------------------------------------------- P4-1: AI 调整（受限 ReAct + 备份/回滚）
+def _track_json_path(project: str, track: str):
+    """定位轨道 JSON 文件（兼容 '01' / '01_吉他' 两种写法）"""
+    tdir = config.project_dir / project / "song_engineer" / "track"
+    if not tdir.exists():
+        return None
+    p = tdir / f"{track}.json"
+    if p.exists():
+        return p
+    for f in tdir.glob("*.json"):
+        stem = f.stem
+        if stem == track or stem.startswith(track + "_") or stem.startswith(track):
+            return f
+    return None
+
+
+def _backup_dir():
+    d = config.root_dir / "workspace" / ".cache" / "ai_adjust_backup"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _write_backup(project: str, track: str, json_text: str) -> str:
+    bid = "adj_" + uuid.uuid4().hex
+    payload = {"project": project, "track": track, "json": json_text}
+    (_backup_dir() / f"{bid}.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
+    return bid
+
+
+def _read_backup(bid: str):
+    if not bid:
+        return None
+    p = _backup_dir() / f"{bid}.json"
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _delete_backup(bid: str):
+    if not bid:
+        return
+    p = _backup_dir() / f"{bid}.json"
+    try:
+        p.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _note_changed(b: dict, a: dict) -> bool:
+    for k in ("midi", "velocity", "startBeat", "durBeats", "lyric"):
+        if b.get(k) != a.get(k):
+            return True
+    return False
+
+
+def _build_skill_args(mode, project, track, instruction, scope, indices, after_bar, bars, vocal):
+    """构造 ai_track_editor / ai_adjust_vocal 的结构化参数（无模型时的兜底直调）"""
+    if vocal:
+        return {
+            "project": project, "track": track,
+            "instruction": instruction, "scope": scope,
+            "per_note": bool(indices),
+        }
+    if mode == "insert":
+        return {
+            "project": project, "track": track, "op": "insert",
+            "after_bar": after_bar, "bars": bars, "instruction": instruction,
+        }
+    return {
+        "project": project, "track": track,
+        "instruction": instruction, "scope": scope,
+    }
+
+
+async def _ws_ai_adjust(ws: WebSocket, msg: dict):
+    """P4-1: 受限 ReAct 跑 AI 调整，过程中实时推送 reasoning/工具/观察；结束后回读 before/after 供前端可回滚预览。"""
+    ws_send = lambda o: ws.send_json(o)
+    project = msg.get("project", "")
+    track = msg.get("track", "")
+    instruction = (msg.get("instruction") or "").strip()
+    mode = msg.get("mode", "track")  # track | insert | note
+    indices = msg.get("indices") or []
+    vocal = bool(msg.get("vocal", False))
+    after_bar = msg.get("after_bar")
+    bars = msg.get("bars")
+
+    tj_path = _track_json_path(project, track)
+    if not tj_path:
+        await ws_send({"type": "error", "msg": f"找不到轨道 JSON: {project}/{track}"})
+        return
+    try:
+        before_text = tj_path.read_text(encoding="utf-8")
+        before_json = json.loads(before_text)
+    except Exception as e:
+        await ws_send({"type": "error", "msg": f"读取轨道失败: {e}"})
+        return
+
+    backup_id = _write_backup(project, track, before_text)
+    before_fe = noteconv.canonical_to_fe(before_json.get("notes", []))
+
+    skill = "ai_adjust_vocal" if vocal else "ai_track_editor"
+    if mode == "note" and indices:
+        scope = "indices:" + ",".join(str(i) for i in indices)
+        indices_line = f"- 选中音符下标: {indices}"
+    elif mode == "insert":
+        scope = "all"
+        indices_line = f"- 插入位置: 第 {after_bar} 小节后插入 {bars} 小节"
+    else:
+        scope = "all"
+        indices_line = "- 作用域: 整轨"
+    if not instruction and mode == "insert":
+        instruction = f"在第{after_bar}小节后插入{bars}小节（复制前段模式）"
+
+    fe = before_fe
+    midis = [n.get("midi", 60) for n in fe] or [60]
+    vels = [n.get("velocity", 80) for n in fe] or [80]
+    midi_min, midi_max = min(midis), max(midis)
+    vel_min, vel_max = min(vels), max(vels)
+
+    sys_extra = SYSTEM_PROMPT_AI_ADJUST.format(
+        skill=skill, project=project, track=track, vocal=vocal,
+        instruction=instruction or "(自由发挥，依据轨道风格做合理优化)",
+        scope=scope, indices_line=indices_line,
+        count=len(fe), midi_min=midi_min, midi_max=midi_max,
+        vel_min=vel_min, vel_max=vel_max,
+    )
+    user_prompt = f"请对轨道「{track}」执行 AI 调整：{instruction}"
+    if mode == "insert":
+        user_prompt += f"（在第 {after_bar} 小节后插入 {bars} 小节）"
+
+    await ws_send({"type": "text", "msg": f"🧑 {instruction or 'AI 调整'}",
+                   "stream": False, "role": "user_echo"})
+
+    try:
+        token = InterruptToken()
+        await _agent_loop.run_task(
+            user_prompt=user_prompt, project_name=project, history=[],
+            interrupt_token=token, ws_send=ws_send,
+            extra_system=sys_extra, tool_names=[skill],
+        )
+    except Exception as e:
+        logger.exception("ai_adjust ReAct failed")
+        await ws_send({"type": "error", "msg": f"ReAct 执行异常: {e}"})
+
+    # 回读 after
+    try:
+        after_json = json.loads(tj_path.read_text(encoding="utf-8"))
+    except Exception:
+        after_json = before_json
+    after_fe = noteconv.canonical_to_fe(after_json.get("notes", []))
+
+    # 无变化 → 直调技能兜底（不依赖模型 function calling 能力）
+    before_key = json.dumps(before_fe, ensure_ascii=False, sort_keys=True)
+    after_key = json.dumps(after_fe, ensure_ascii=False, sort_keys=True)
+    if before_key == after_key:
+        await ws_send({"type": "log", "tool": skill,
+                       "msg": "模型未产生变化，改用结构化参数直接执行技能…"})
+        args = _build_skill_args(mode, project, track, instruction, scope, indices, after_bar, bars, vocal)
+        _core.run_skill(skill, args)
+        try:
+            after_json = json.loads(tj_path.read_text(encoding="utf-8"))
+            after_fe = noteconv.canonical_to_fe(after_json.get("notes", []))
+            after_key = json.dumps(after_fe, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            pass
+
+    changed = sum(1 for a in after_fe if any(_note_changed(b, a) for b in before_fe if b.get("id") == a.get("id")))
+    added = sum(1 for a in after_fe if not any(b.get("id") == a.get("id") for b in before_fe))
+    removed = sum(1 for b in before_fe if not any(a.get("id") == b.get("id") for a in after_fe))
+    summary = f"AI 调整完成（{skill}）：改 {changed} / 增 {added} / 删 {removed} 个音符"
+
+    await ws_send({
+        "type": "ai_adjust_result", "project": project, "track": track,
+        "isVocal": vocal, "backupId": backup_id,
+        "before": before_fe, "after": after_fe, "message": summary,
+    })
+
+
+async def _ws_ai_adjust_undo(ws: WebSocket, msg: dict):
+    """P4-1: 撤销 AI 调整，从备份恢复轨道 JSON"""
+    bid = msg.get("backupId") or msg.get("backup_id")
+    b = _read_backup(bid) if bid else None
+    if not b:
+        await ws.send_json({"type": "error", "msg": "备份不存在或已过期"})
+        return
+    tj_path = _track_json_path(b["project"], b["track"])
+    if not tj_path:
+        await ws.send_json({"type": "error", "msg": "轨道不存在，无法恢复"})
+        return
+    tj_path.write_text(b["json"], encoding="utf-8")
+    await ws.send_json({"type": "ai_adjust_undone", "project": b["project"],
+                        "track": b["track"], "backupId": bid})
+    await ws.send_json({"type": "log", "tool": b["track"], "msg": "已撤销 AI 调整（恢复备份）"})
+    await ws.send_json({"type": "project_updated", "project": b["project"]})
+
+
+async def _ws_ai_adjust_apply(ws: WebSocket, msg: dict):
+    """P4-1: 确认应用 AI 调整，清理备份"""
+    bid = msg.get("backupId") or msg.get("backup_id")
+    _delete_backup(bid)
+    await ws.send_json({"type": "ai_adjust_applied", "backupId": bid})
 
 
 # ---------------------------------------------------------------- AI 协助路由（D5）

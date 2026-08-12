@@ -1,17 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useProjectStore } from '../store/projectStore'
+import { useTrackStore } from '../store/trackStore'
 import { getProject } from '../services/api'
+import { wsClient } from '../services/wsClient'
 
 // 经当前页面 host 的 /ws 路径，由 vite 代理转发到后端(8000)。
-// 覆盖：设 VITE_WS_URL（如 ws://other-host:8000/ws/chat）。
-const WS_URL: string =
-  (import.meta.env.VITE_WS_URL as string | undefined) ||
-  `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/chat`
-
+// 连接与收发由 wsClient 单例管理，本 hook 只负责把消息路由到 store，并提供 sendChat。
 export function useWebSocket() {
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const manualCloseRef = useRef(false)
   const storeRef = useRef(useProjectStore.getState())
 
   // 保持 store 引用最新（不放进 connect 依赖，避免重连）
@@ -92,6 +87,33 @@ export function useWebSocket() {
         s.addChat({ role: 'log', msg: `■ 完成: ok=${data.ok} fail=${data.fail}` })
         s.setWsStatus('connected')
         break
+      // P4-1: AI 调整完成，触发可回滚预览卡片
+      case 'ai_adjust_result': {
+        const { project, track, isVocal, backupId, before, after, message } = data
+        const id = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        useTrackStore.getState().stagePending({
+          id,
+          project: project || '',
+          trackId: track,
+          isVocal: !!isVocal,
+          before: before || [],
+          after: after || [],
+          message: message || 'AI 调整完成',
+          applied: false,
+          source: 'backend',
+          wsOrigin: true,
+          backupId,
+        })
+        s.addChat({ role: 'tool_call', msg: message || 'AI 调整完成', files: [id] })
+        s.setAiBusy(false)
+        break
+      }
+      case 'ai_adjust_undone':
+        s.addChat({ role: 'log', msg: `↩️ 已撤销 AI 调整（${data.track || ''}）` })
+        break
+      case 'ai_adjust_applied':
+        s.addChat({ role: 'log', msg: `✅ 已确认应用 AI 调整` })
+        break
       case 'project_updated':
         // 后端发工程名, 重新拉取工程数据
         if (data.project) {
@@ -102,74 +124,26 @@ export function useWebSocket() {
         break
       case 'error':
         s.addChat({ role: 'log', msg: '❌ ' + (data.msg || '') })
+        s.setAiBusy(false)
         break
       default:
         console.log('[WS] Unknown msg:', type, data)
     }
   }, [])
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return
-
-    manualCloseRef.current = false
-    try {
-      const ws = new WebSocket(WS_URL)
-
-      ws.onopen = () => {
-        console.log('[WS] Connected')
-        storeRef.current.setWsStatus('connected')
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          handleMessage(JSON.parse(event.data))
-        } catch (e) {
-          console.error('[WS] parse failed:', e)
-        }
-      }
-
-      ws.onclose = () => {
-        console.log('[WS] Disconnected')
-        storeRef.current.setWsStatus('idle')
-        wsRef.current = null
-        if (!manualCloseRef.current) {
-          reconnectTimerRef.current = setTimeout(() => {
-            console.log('[WS] Reconnecting...')
-            connect()
-          }, 2000)
-        }
-      }
-
-      ws.onerror = () => {
-        // onclose 会紧跟触发, 这里不额外处理避免重复
-      }
-
-      wsRef.current = ws
-    } catch (e) {
-      console.error('[WS] Connection failed:', e)
+  useEffect(() => {
+    wsClient.connect()
+    const off = wsClient.onMessage(handleMessage)
+    return () => {
+      off()
     }
   }, [handleMessage])
 
   const sendChat = useCallback((msg: string, audioPath?: string, project?: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      console.warn('[WS] Not connected, cannot send')
-      return false
-    }
-    const payload: any = { type: 'chat', msg }
-    if (audioPath) payload.audio_path = audioPath
-    if (project) payload.project = project
-    wsRef.current.send(JSON.stringify(payload))
-    return true
+    const ok = wsClient.sendChat(msg, audioPath, project)
+    if (!ok) console.warn('[WS] Not connected, cannot send')
+    return ok
   }, [])
-
-  useEffect(() => {
-    connect()
-    return () => {
-      manualCloseRef.current = true
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-      wsRef.current?.close()
-    }
-  }, [connect])
 
   return { sendChat }
 }

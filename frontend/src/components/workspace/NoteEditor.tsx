@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import PianoRoll from './PianoRoll'
 import AiAssistPanel from './AiAssistPanel'
 import { MixTrack, SECTIONS } from '../../utils/trackModel'
@@ -7,10 +7,8 @@ import { useToast } from '../common/Toast'
 import { useProjectStore } from '../../store/projectStore'
 import { useTrackStore, loadTrackNotes } from '../../store/trackStore'
 import { useThemeStore } from '../../store/themeStore'
-import { diffNotes } from '../../utils/noteModel'
+import { useTransportStore } from '../../store/transportStore'
 import { saveTrackNotes } from '../../services/api'
-
-const PLAY_BPM = 68 // 走带速度（工程「走在」=68BPM）
 
 interface NoteEditorProps {
   track: MixTrack
@@ -44,7 +42,7 @@ export default function NoteEditor({ track }: NoteEditorProps) {
     [track],
   )
 
-  const { currentProject, addChat } = useProjectStore()
+  const { currentProject } = useProjectStore()
   const dark = useThemeStore((s) => s.theme === 'dark')
   const [notes, setNotes] = useState<Note[]>([])
   const [loadingNotes, setLoadingNotes] = useState(false)
@@ -133,30 +131,7 @@ export default function NoteEditor({ track }: NoteEditorProps) {
     toast.info('已从中点分段')
   }, [selected, toast])
 
-  // D3：AI 调整不直接落地，先暂存【预览】到对话区，可回滚应用
-  const onPreview = useCallback(
-    (before: Note[], after: Note[], message: string, source: 'backend' | 'demo') => {
-      const diffs = diffNotes(before, after)
-      if (diffs.length === 0) {
-        toast.info('AI 未产生变化')
-        return
-      }
-      const id = `pending_${Date.now()}`
-      useTrackStore.getState().stagePending({
-        id,
-        project: currentProject || '',
-        trackId: track.id,
-        isVocal: track.isSinger,
-        before,
-        after,
-        message,
-        applied: false,
-        source,
-      })
-      addChat({ role: 'tool_call', msg: message, files: [id] })
-    },
-    [currentProject, track.id, track.isSinger, toast, addChat],
-  )
+  // D3：AI 调整预览由 WS 链路（useWebSocket 处理 ai_adjust_result）统一暂存，本组件只负责编辑与保存。
 
   const handleSave = useCallback(() => {
     if (!currentProject) {
@@ -170,45 +145,16 @@ export default function NoteEditor({ track }: NoteEditorProps) {
       .catch((e: any) => toast.error(`落盘失败：${e?.message || e}（本地已暂存）`))
   }, [notes, toast, currentProject, track.id])
 
-  // E4：走带播放头（Space 播放/停止，红竖线随拍移动）
-  const [playBeat, setPlayBeat] = useState<number | null>(null)
-  const rafRef = useRef<number | null>(null)
-  const lastTsRef = useRef<number>(0)
-  const stopTransport = useCallback(() => {
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-    rafRef.current = null
-    setPlayBeat(null)
-  }, [])
-  const togglePlay = useCallback(() => {
-    if (rafRef.current != null) {
-      stopTransport()
-      return
-    }
-    lastTsRef.current = performance.now()
-    const total = 52 * 4
-    const tick = (ts: number) => {
-      const dt = (ts - lastTsRef.current) / 1000
-      lastTsRef.current = ts
-      setPlayBeat((prev) => {
-        const cur = prev == null ? 0 : prev
-        const next = cur + (PLAY_BPM / 60) * dt
-        return next >= total ? 0 : next
-      })
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-  }, [stopTransport])
+  // P4-4: 播放头从全局 transportStore 读取（Space/Home 由全局快捷键控制）
+  const playBeat = useTransportStore((s) => s.playBeat)
+  const isPlaying = useTransportStore((s) => s.isPlaying)
+  const toggleTransport = useTransportStore((s) => s.toggle)
 
-  // E4：键盘快捷键（焦点在输入框时让位给文本编辑）
+  // E4：音符级快捷键（焦点在输入框时让位给文本编辑；Space 走带由全局 P4-4 接管）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || '').toUpperCase()
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
-      if (e.key === ' ' && !typing) {
-        e.preventDefault()
-        togglePlay()
-        return
-      }
       if (typing || !selected) return
       switch (e.key) {
         case 'ArrowUp':
@@ -236,12 +182,7 @@ export default function NoteEditor({ track }: NoteEditorProps) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selected, updateNote, deleteNote, togglePlay])
-
-  // 卸载时停走带
-  useEffect(() => () => {
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-  }, [])
+  }, [selected, updateNote, deleteNote])
 
   return (
     <div className="flex flex-col h-full gap-2 dark:text-gray-300">
@@ -264,11 +205,11 @@ export default function NoteEditor({ track }: NoteEditorProps) {
         </span>
         <span className="flex items-center gap-2">
           <button
-            onClick={togglePlay}
+            onClick={toggleTransport}
             className="px-2 py-0.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200"
             title="空格键播放/停止"
           >
-            {playBeat == null ? '▶ 播放' : '⏸ 停止'}
+            {isPlaying ? '⏸ 停止' : '▶ 播放'}
           </button>
           <span className="tabular-nums text-gray-400">
             {playBeat == null ? '0.0' : playBeat.toFixed(1)} 拍
@@ -284,7 +225,6 @@ export default function NoteEditor({ track }: NoteEditorProps) {
         notes={notes}
         selectedIds={selected ? [selected.id] : []}
         vocal={track.isSinger}
-        onPreview={onPreview}
         onToast={(msg, kind) => (kind === 'error' ? toast.error(msg) : kind === 'success' ? toast.success(msg) : toast.info(msg))}
       />
 

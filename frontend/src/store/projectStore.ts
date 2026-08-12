@@ -46,6 +46,7 @@ interface ProjectState {
   chat: ChatMessage[]
   wsStatus: WsStatus
   audioPath: string | null
+  aiBusy: boolean  // P4-1: AI 调整（WS ReAct）进行中
   // actions
   loadProjects: (projects: ProjectListItem[]) => void
   selectProject: (name: string | null) => void
@@ -56,6 +57,7 @@ interface ProjectState {
   sendChat: (msg: string, audioPath?: string) => void
   setWsStatus: (status: WsStatus) => void
   setAudioPath: (path: string | null) => void
+  setAiBusy: (v: boolean) => void
 }
 
 let _msgSeq = 0
@@ -69,6 +71,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   chat: [],
   wsStatus: 'idle',
   audioPath: null,
+  aiBusy: false,
 
   loadProjects: (projects) => set({ projects }),
 
@@ -108,4 +111,6 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setWsStatus: (status) => set({ wsStatus: status }),
 
   setAudioPath: (path) => set({ audioPath: path }),
+
+  setAiBusy: (v) => set({ aiBusy: v }),
 }))
