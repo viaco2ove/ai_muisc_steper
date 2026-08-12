@@ -334,6 +334,7 @@ export default function WorkspacePanel() {
             {!loading && projectData && (
               <>
                 <BasicInfo
+                  projectName={currentProject}
                   bpm={bpm}
                   key={key}
                   style={style}
