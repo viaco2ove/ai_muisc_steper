@@ -28,14 +28,15 @@ def make_wrapper_script(script_path: str, args_file_basename: str = '') -> str:
 
     策略:
       1. 从 JSON 文件读 kwargs (无中文编码问题)
-      2. 直接给 main() 传 kwargs (如果 main 接受)
-      3. 否则 monkey-patch argparse.ArgumentParser.parse_args 返回 kw Namespace,
-         让脚本的 argparse.parse_args() 拿到正确的中文 kwargs
+      2. 先 patch argparse (在 import 前)
+      3. 然后 import 脚本
+      4. 如果有 main() 接受 kwargs, 直接传
+      5. 否则脚本会用 patched 的 parse_args 获取参数
     """
     args_basename = args_file_basename or "args.json"
     return f'''
 # -*- coding: utf-8 -*-
-import sys, json, importlib.util, os, inspect, argparse
+import sys, json, importlib.util, os, inspect, argparse, ast
 # 强制 UTF-8 IO (避免 Windows GBK 默认)
 sys.stdin.reconfigure(encoding='utf-8')
 sys.stdout.reconfigure(encoding='utf-8')
@@ -48,12 +49,44 @@ args_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), r'{args_bas
 with io.open(args_path, 'r', encoding='utf-8') as f:
     kw = json.load(f)
 
+# 规范化 kwargs (支持 --xxx 或 xxx 两种格式)
+ns_kwargs = {{}}
+for k, v in kw.items():
+    key = k.lstrip('-').replace('-', '_')
+    ns_kwargs[key] = v
+
+# 解析脚本里的 add_argument 字段 (在 import 前做, 因为脚本可能模块级调用 parse_args)
+try:
+    with open(r'{script_path}', encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = getattr(node, 'func', None)
+            if isinstance(func, ast.Attribute) and func.attr == 'add_argument':
+                for arg in getattr(node, 'args', []):
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        fname = arg.value.lstrip('-').replace('-', '_')
+                        if fname not in ns_kwargs:
+                            ns_kwargs[fname] = None
+except Exception:
+    pass
+
+# 预先 patch argparse (在 import 脚本之前, 捕获模块级 parse_args 调用)
+ns = argparse.Namespace(**ns_kwargs)
+_orig_parse_args = argparse.ArgumentParser.parse_args
+def _fake_parse_args(self, *args, **kwargs):
+    return ns
+argparse.ArgumentParser.parse_args = _fake_parse_args
+
 # import 脚本
 spec = importlib.util.spec_from_file_location('__skill__', r'{script_path}')
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
-# 如果 main() 接受 kwargs → 直接传
+# 恢复原始 parse_args
+argparse.ArgumentParser.parse_args = _orig_parse_args
+
+# 如果 main() 存在, 调用它
 if hasattr(mod, 'main'):
     sig = inspect.signature(mod.main)
     params = list(sig.parameters.keys())
@@ -68,47 +101,10 @@ if hasattr(mod, 'main'):
         except SystemExit as e:
             sys.exit(0 if e.code is None else e.code)
     else:
-        # main() 无参, 内部用 argparse.parse_args()
-        # Monkey-patch: parse_args 返回带默认值的 Namespace
-        # 这样绕过 sys.argv 的中文编码问题
-        ns_kwargs = {{}}
-        for k, v in kw.items():
-            ns_kwargs[k.lstrip('-').replace('-', '_')] = v
-        # 解析脚本里的 argparse, 收集所有已知字段, 缺省值 None
-        import ast
-        try:
-            with open(r'{script_path}', encoding='utf-8') as f:
-                tree = ast.parse(f.read())
-            # 简单 AST 分析: 找 add_argument 的 "--xxx" / "xxx"
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Call):
-                    func = node.func
-                    if isinstance(func, ast.Attribute) and func.attr == 'add_argument':
-                        # 提取 '--xxx' 或 'xxx'
-                        for arg in node.args:
-                            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                                if arg.value.startswith('--'):
-                                    fname = arg.value[2:].replace('-', '_')
-                                    if fname not in ns_kwargs:
-                                        ns_kwargs[fname] = None
-                                elif arg.value.startswith('-'):
-                                    continue
-                                else:
-                                    fname = arg.value.replace('-', '_')
-                                    if fname not in ns_kwargs:
-                                        ns_kwargs[fname] = None
-        except Exception:
-            pass
-
-        ns = argparse.Namespace(**ns_kwargs)
-        orig_parse_args = argparse.ArgumentParser.parse_args
-        def fake_parse_args(self, *args, **kwargs):
-            return ns
-        argparse.ArgumentParser.parse_args = fake_parse_args
         try:
             mod.main()
-        finally:
-            argparse.ArgumentParser.parse_args = orig_parse_args
+        except SystemExit as e:
+            sys.exit(0 if e.code is None else e.code)
 elif hasattr(mod, 'main_entry'):
     mod.main_entry(kw)
 '''

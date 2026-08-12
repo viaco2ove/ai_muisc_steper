@@ -68,10 +68,43 @@ class FunctionCallSpec:
         import json
         fn = tool_call.get("function", {})
         args_raw = fn.get("arguments", "{}")
+
+        # 解析参数，处理各种边缘情况
+        args = {}
         try:
-            args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
-        except Exception:
-            args = {}
+            if isinstance(args_raw, str):
+                args_raw = args_raw.strip()
+                # 情况1: 正常 JSON
+                args = json.loads(args_raw)
+            else:
+                args = args_raw
+
+            # 情况2: 嵌套 JSON 字符串（如 '{"key": "{\"nested\": \"value\"}"}'）
+            # 如果解析结果是单字符串键且值是 JSON 字符串，尝试二次解析
+            if isinstance(args, dict):
+                for k, v in args.items():
+                    if isinstance(v, str) and v.startswith('{') and v.endswith('}'):
+                        try:
+                            args[k] = json.loads(v)
+                        except Exception:
+                            pass  # 不是有效的 JSON，保持原值
+        except json.JSONDecodeError as e:
+            # 尝试清理常见的格式问题
+            cleaned = args_raw.replace('\\"', '"').replace('""', '"')
+            try:
+                args = json.loads(cleaned)
+            except Exception:
+                # 最后尝试提取 JSON 对象
+                import re
+                match = re.search(r'\{[^{}]*\}', args_raw)
+                if match:
+                    try:
+                        args = json.loads(match.group())
+                    except Exception:
+                        args = {}
+                else:
+                    args = {}
+
         return cls(
             call_id=tool_call.get("id", ""),
             tool_name=fn.get("name", ""),
