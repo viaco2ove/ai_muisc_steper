@@ -97,7 +97,12 @@ export default function WorkspacePanel() {
       }
       setSaveState('saving')
       try {
-        await saveTrack(currentProject, tid, md) // P0-3: 真正持久化
+        const result = await saveTrack(currentProject, tid, md) // P0-3: 真正持久化
+        if (result.conflict) {
+          setSaveState('error')
+          toast.error(result.message || '保存冲突，请刷新后重试')
+          return
+        }
         setSaveState('saved')
         toast.success(`已保存 ${tid}`)
       } catch (e: any) {
@@ -286,6 +291,11 @@ export default function WorkspacePanel() {
         >
           + 新建
         </button>
+        <NewProjectDialog
+          open={showNewProjectDialog}
+          onClose={() => setShowNewProjectDialog(false)}
+          onSubmit={handleNewProjectSubmit}
+        />
       </div>
 
       {/* Tab 栏 */}

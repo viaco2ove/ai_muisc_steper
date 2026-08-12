@@ -43,23 +43,40 @@ export async function getTrackNotes(name: string, tid: string): Promise<any> {
   return res.json()
 }
 
-export async function saveTrack(name: string, tid: string, md: string): Promise<void> {
+export async function saveTrack(name: string, tid: string, md: string, ifUnmodifiedSince?: string): Promise<{ conflict?: boolean; message?: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (ifUnmodifiedSince) {
+    headers['If-Unmodified-Since'] = ifUnmodifiedSince
+  }
   const res = await fetch(`${BASE_URL}/api/project/${encodeName(name)}/track/${encodeName(tid)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ md }),
   })
+  if (res.status === 409) {
+    // 保存冲突：远程版本已更新
+    return { conflict: true, message: '轨道已被其他客户端修改，请刷新后重试' }
+  }
   if (!res.ok) throw new Error(`saveTrack failed: ${res.status}`)
+  return {}
 }
 
 // 轨道音符落盘（A1/D4）：前端 Notes 直接 PUT，后端转规范 JSON 写回。
-export async function saveTrackNotes(name: string, tid: string, notes: any[]): Promise<void> {
+export async function saveTrackNotes(name: string, tid: string, notes: any[], ifUnmodifiedSince?: string): Promise<{ conflict?: boolean; message?: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (ifUnmodifiedSince) {
+    headers['If-Unmodified-Since'] = ifUnmodifiedSince
+  }
   const res = await fetch(`${BASE_URL}/api/project/${encodeName(name)}/track/${encodeName(tid)}/notes`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ notes }),
   })
+  if (res.status === 409) {
+    return { conflict: true, message: '音符数据已被其他客户端修改，请刷新后重试' }
+  }
   if (!res.ok) throw new Error(`saveTrackNotes failed: ${res.status}`)
+  return {}
 }
 
 export async function deleteProject(name: string): Promise<{ status: string; deleted: string }> {
