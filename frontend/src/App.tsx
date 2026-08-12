@@ -8,6 +8,7 @@ import { useGlobalShortcuts } from './hooks/useGlobalShortcuts'
 import ShortcutHelp from './components/common/ShortcutHelp'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import { I18nProvider, LocaleSwitch } from './i18n'
+import WsConnectionBanner from './components/common/WsConnectionBanner'
 import { useState } from 'react'
 
 const THEME_ICON: Record<string, string> = { light: '☀️', dark: '🌙', system: '🖥️' }
@@ -118,6 +119,7 @@ export default function App() {
             </main>
             <GlobalShortcutLayer onToggleHelp={() => setShowHelp((v) => !v)} />
             <ShortcutHelp open={showHelp} onClose={() => setShowHelp(false)} />
+            <WsConnectionBanner />
           </div>
         </ToastProvider>
       </I18nProvider>
