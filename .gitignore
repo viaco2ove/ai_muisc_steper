@@ -105,3 +105,4 @@ cache/
 # ---------- Electron ----------
 electron/dist/
 electron/build/
+/sandbox/
