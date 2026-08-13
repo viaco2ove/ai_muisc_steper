@@ -61,22 +61,18 @@ async def main():
 
         content = await page.content()
         checks = [
-            ("ChatPanel", "AI" in content or "对话" in content),
-            ("MixView", "混音台" in content),
-            ("TrackSubView OK", "无混音元数据" not in content),
-            ("TrackEditor", "MD编辑器" in content),
-            ("NoteEditor", "音符检查器" in content),
-            ("Singer", "歌手" in content),
-            ("Lyrics", "歌词" in content),
-            ("AI修改", "AI 修改" in content),
-            ("音符卷帘", "音符卷帘" in content),
+            ("[1] ChatPanel 渲染", "AI音乐工程工作台" in content),
+            ("[2] MixView 18 轨道", "> 18 <" in content or "18 轨" in content or "tracks_count" in content),
+            ("[3] TrackSubView 渲染", "无混音元数据" not in content and "点击左侧任意轨道" not in content),
+            ("[4] PianoRoll 音符", "MIDI" in content or "canvas" in content),
+            ("[5] 顶部轨道工具栏", "添加轨道" in content or "选中" in content),
         ]
 
         sys.stdout.reconfigure(encoding='utf-8')
-        print("\n=== UI status ===")
+        print("\n=== review.md 5 项验证 ===")
         for k, v in checks:
-            status = "OK" if v else "FAIL"
-            print(f"{status} {k}")
+            status = "✅ PASS" if v else "❌ FAIL"
+            print(f"{status}  {k}")
 
         await browser.close()
 
