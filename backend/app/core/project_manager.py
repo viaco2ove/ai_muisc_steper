@@ -102,10 +102,19 @@ class ProjectManager:
         c = track_dir / f"{tid}{ext}"
         if c.exists():
             return c
+        # 编号补零（"2" -> "02"）
+        tid_padded = f"{int(tid):02d}" if tid.isdigit() else tid
+        if tid_padded != tid:
+            c = track_dir / f"{tid_padded}{ext}"
+            if c.exists():
+                return c
+        c = track_dir / f"{tid_padded}_{ext.lstrip('.')}"
         # 前缀匹配 (01 -> 01_吉他)
         for f in track_dir.glob(f"*{ext}"):
             stem = f.stem
-            if stem == tid or stem.startswith(tid + "_") or stem.startswith(tid):
+            if (stem == tid or stem == tid_padded or
+                stem.startswith(tid + "_") or stem.startswith(tid) or
+                stem.startswith(tid_padded + "_") or stem.startswith(tid_padded)):
                 return f
         return None
 
@@ -152,11 +161,19 @@ class ProjectManager:
         if not track_dir.exists():
             return []
         tracks = []
-        for jf in sorted(track_dir.glob("*.json")):
+        seen_ids = set()
+        for i, jf in enumerate(sorted(track_dir.glob("*.json"))):
             try:
                 tj = json.loads(jf.read_text(encoding="utf-8"))
+                raw_id = str(tj.get("track_id", jf.stem))
+                # 自动补零避免 id 重复
+                if raw_id in seen_ids:
+                    track_id = f"{i + 1:02d}"
+                else:
+                    track_id = raw_id
+                seen_ids.add(track_id)
                 tracks.append({
-                    "id": str(tj.get("track_id", jf.stem)),
+                    "id": track_id,
                     "name": tj.get("name", jf.stem),
                     "role": tj.get("role", ""),
                     "status": tj.get("status", ""),

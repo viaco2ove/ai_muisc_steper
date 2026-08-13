@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { useUiStore } from '../../store/uiStore'
 import { useToast } from '../common/Toast'
-import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, copyProject, createTrack, deleteTrack, reorderTrack } from '../../services/api'
+import { listProjects, getProject, getTrack, createProject, saveTrack, deleteProject, renameProject, copyProject, createTrack, deleteTrack, reorderTrack, listTracks } from '../../services/api'
 import BasicInfo from './BasicInfo'
 import SectionTable from './SectionTable'
 import TrackEditor from './TrackEditor'
@@ -13,6 +13,7 @@ import ArrangeView from './ArrangeView'
 import NoteEditor from './NoteEditor'
 import SingerPanel, { type SingerJson } from './SingerPanel'
 import LyricsPanel from './LyricsPanel'
+import type { TrackInfo } from '../../services/api'
 import FileBrowser from './FileBrowser'
 import SkillPanel from './SkillPanel'
 import NewProjectDialog from './NewProjectDialog'
@@ -41,6 +42,8 @@ export default function WorkspacePanel() {
   const [mixView, setMixView] = useState<'mix' | 'arrange'>('mix')
   // 轨道排序状态（存储轨道ID顺序）
   const [trackOrder, setTrackOrder] = useState<string[]>(MIX_TRACKS.map((t) => t.id))
+  // 当前选中轨道的后端元数据
+  const [selectedTrackInfo, setSelectedTrackInfo] = useState<TrackInfo | null>(null)
   // 新建工程对话框状态
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
 
@@ -79,6 +82,14 @@ export default function WorkspacePanel() {
       }
       setSelectedTrackId(mt.id)
       setSaveState('idle')
+      // 加载轨道元数据（从后端）
+      try {
+        const apiTracks = await listTracks(currentProject)
+        const found = apiTracks.find((t) => t.id === mt.id || t.name === mt.id)
+        setSelectedTrackInfo(found || null)
+      } catch {
+        setSelectedTrackInfo(null)
+      }
       try {
         const data = await getTrack(currentProject, mt.id)
         setTrackMd(data.md || '')
@@ -431,6 +442,7 @@ export default function WorkspacePanel() {
                     saveState={saveState}
                     onSave={handleSave}
                     currentProject={currentProject}
+                    trackInfo={selectedTrackInfo}
                   />
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-center text-gray-400">
@@ -462,16 +474,22 @@ function TrackSubView({
   saveState,
   onSave,
   currentProject,
+  trackInfo,
 }: {
   trackId: string
   trackMd: string
   saveState: 'idle' | 'saving' | 'saved' | 'error'
   onSave: (md: string) => void
   currentProject?: string | null
+  trackInfo?: TrackInfo | null
 }) {
   const [sub, setSub] = useState<'notes' | 'md' | 'lyrics' | 'singer'>('notes')
   const track = MIX_TRACKS.find((t) => t.id === trackId) || null
-  const isSingerTrack = track?.isSinger || trackId.includes('主唱') || trackId.includes('和声')
+  // 优先用后端实际轨道名判断人声
+  const trackName = trackInfo?.name || track?.name || ''
+  const trackType = trackInfo?.type || track?.type || ''
+  const isSingerTrack = trackType === '人声' || trackType === '和声' ||
+                        trackName.includes('主唱') || trackName.includes('和声')
 
   const handleSingerSave = async (data: SingerJson) => {
     if (!currentProject) return
