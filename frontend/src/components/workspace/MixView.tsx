@@ -155,13 +155,14 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
 
       {/* 轨道 lane 列表（横向滚动） */}
       <div className="flex-1 overflow-auto">
-        {tracks.map((t) => {
+        {tracks.map((t, i) => {
           const clips = clipsForTrack(t)
           const dimmed = anySolo && !t.solo
           const selected = selectedId === t.id
+          const safeKey = `${t.id}_${i}`
           return (
             <div
-              key={t.id}
+              key={safeKey}
               onClick={() => onSelect(t)}
               className={[
                 'flex border-b border-gray-100 cursor-pointer transition-opacity',

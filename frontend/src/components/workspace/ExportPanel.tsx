@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import AudioPlayer from '../audio/AudioPlayer'
 import WaveformView from '../audio/WaveformView'
-import { listFiles, exportProjectZip } from '../../services/api'
+import { listFiles, exportProjectZip, fileUrl } from '../../services/api'
 
 interface AudioFile {
   path: string
@@ -71,8 +71,8 @@ export default function ExportPanel({ project }: { project?: string }) {
   }, [name])
 
   const getAudioUrl = (path: string) => {
-    // 转换相对路径为 API URL
-    return `/api/file/${encodeURIComponent(path)}`
+    // 使用 fileUrl 自动拼接工程名
+    return fileUrl(name, path)
   }
 
   const handleExportZip = async () => {
