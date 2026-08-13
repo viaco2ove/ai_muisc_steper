@@ -36,7 +36,7 @@ export const useUiStore = create<UiState>()(
           delete next[id]
           return { dirtyTracks: next }
         }),
-      splitRatio: 40,
+      splitRatio: 30,
       setSplitRatio: (r) => set({ splitRatio: Math.max(20, Math.min(80, r)) }),
       chatCollapsed: false,
       setChatCollapsed: (v) => set({ chatCollapsed: v }),

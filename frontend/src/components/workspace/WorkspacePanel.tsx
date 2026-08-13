@@ -197,6 +197,8 @@ export default function WorkspacePanel() {
     try {
       await createTrack(currentProject, { id: name, name, type, role, instrument: '' })
       toast.success(`已添加轨道: ${name}`)
+      // 触发轨道列表刷新
+      window.dispatchEvent(new CustomEvent('refresh-tracks', { detail: { project: currentProject } }))
     } catch (e: any) {
       toast.error(`添加失败：${e?.message || e}`)
     }
@@ -208,10 +210,17 @@ export default function WorkspacePanel() {
     try {
       await deleteTrack(currentProject, trackId)
       toast.success(`已删除轨道: ${trackId}`)
+      // 如果删除的是当前选中轨道，清除选择
+      if (selectedTrackId === trackId) {
+        setSelectedTrackId(null)
+        setTrackMd('')
+      }
+      // 触发轨道列表刷新
+      window.dispatchEvent(new CustomEvent('refresh-tracks', { detail: { project: currentProject } }))
     } catch (e: any) {
       toast.error(`删除失败：${e?.message || e}`)
     }
-  }, [currentProject, toast])
+  }, [currentProject, selectedTrackId, setSelectedTrackId, toast])
 
   const handleReorderTrack = useCallback(
     async (direction: 'up' | 'down') => {

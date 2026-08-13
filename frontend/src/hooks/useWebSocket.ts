@@ -117,11 +117,13 @@ export function useWebSocket() {
         s.addChat({ role: 'log', msg: `✅ 已确认应用 AI 调整` })
         break
       case 'project_updated':
-        // 后端发工程名, 重新拉取工程数据
+        // 后端发工程名, 重新拉取工程数据 + 触发 TrackSubView 刷新
         if (data.project) {
           getProject(data.project)
             .then((d) => s.loadProjectData(d))
             .catch(() => {})
+          // 派发自定义事件让 MixView 重新加载轨道
+          window.dispatchEvent(new CustomEvent('refresh-tracks', { detail: { project: data.project } }))
         }
         break
       case 'error':

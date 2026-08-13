@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   MIX_TRACKS,
   SECTIONS,
@@ -44,7 +44,7 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
   const { currentProject } = useProjectStore()
 
   // 从后端加载工程实际轨道（新建/删除实时同步）
-  useEffect(() => {
+  const loadProjectTracks = useCallback(() => {
     if (!currentProject) return
     listTracks(currentProject)
       .then((apiTracks: TrackInfo[]) => {
@@ -71,6 +71,22 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
       })
       .catch((e) => console.error('loadTracks failed:', e))
   }, [currentProject])
+
+  useEffect(() => {
+    loadProjectTracks()
+  }, [loadProjectTracks])
+
+  // 监听后端 project_updated 事件，刷新轨道列表
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.project === currentProject) {
+        loadProjectTracks()
+      }
+    }
+    window.addEventListener('refresh-tracks', handler)
+    return () => window.removeEventListener('refresh-tracks', handler)
+  }, [currentProject, loadProjectTracks])
   // P6-3/P6-5: 试听状态
   const [previewTrack, setPreviewTrack] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
