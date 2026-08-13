@@ -124,3 +124,7 @@ mscx 生成后必须保证每小节 = 1920 ticks (4/4)。`measure_xml()` 用 tim
 - MuseScore 4.7 + MuseSounds 全套库（`C:\Users\viaco\Muse Hub\Instruments`），渲染走 `MuseScore4.exe -f --sound-profile MuseSounds -o out.mp3 in.mscx`。
 - FluidSynth + MS Basic.sf3（`/c/Program Files/MuseScore 4/sound/`）。
 - `.env` 含 `minimax_api_key`（音乐生成）、`fluidsynth_path`、`musescore_ver`。
+
+## 任务状态
+[]:未开始 [suc]:已检查没有问题, [skip]:暂时跳过, [wait]:待检查,[ing] 实现中或处理中或修复中
+[fail]:检查不通过，[check]:正在中

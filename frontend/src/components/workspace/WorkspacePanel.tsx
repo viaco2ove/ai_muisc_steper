@@ -435,15 +435,16 @@ export default function WorkspacePanel() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 border-r min-h-0">
+              {/* MixView/ArrangeView - 固定宽度 + 收缩 */}
+              <div className="w-[420px] shrink-0 border-r min-h-0">
                 {mixView === 'mix' ? (
                   <MixView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
                 ) : (
                   <ArrangeView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
                 )}
               </div>
-              {/* 右：轨道编辑（主从） */}
-              <div className="flex-1 min-h-0 flex flex-col">
+              {/* 右：轨道编辑（占剩余空间 + min-w-0 防止撑大） */}
+              <div className="flex-1 min-w-0 min-h-0 flex flex-col">
                 {selectedTrackId ? (
                   <TrackSubView
                     trackId={selectedTrackId}

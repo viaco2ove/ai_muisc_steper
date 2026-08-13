@@ -47,27 +47,39 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
   const loadProjectTracks = useCallback(() => {
     if (!currentProject) return
     listTracks(currentProject)
-      .then((apiTracks: TrackInfo[]) => {
-        // 合并硬编码模型与后端轨道
+.then((apiTracks: TrackInfo[]) => {
+        // 合并硬编码模型与后端轨道（确保每个轨道都有完整字段）
         const merged: MixTrack[] = apiTracks.map((t) => {
           const base = MIX_TRACKS.find((m) => m.id === t.id || m.id === t.name)
+          const isSinger = base?.isSinger ||
+            (t.type === '人声' || t.type === '和声') ||
+            (t.name || '').includes('主唱') ||
+            (t.name || '').includes('和声') ||
+            (t.name || '').includes('vocal')
           return {
             ...base,
             id: t.id,
-            name: t.name,
+            name: t.name || t.id,
             role: t.role || base?.role || '',
             status: t.status || base?.status || '草稿',
             type: (t.type || base?.type || '乐器') as any,
             instrument: t.instrument || base?.instrument || '',
+            museUID: base?.museUID || '',
+            museName: base?.museName || '',
+            musePack: base?.musePack || '',
+            isSinger,
             volume: t.volume ?? base?.volume ?? 0.8,
+            pan: base?.pan ?? 0,
+            velocity: base?.velocity ?? 80,
             muted: t.muted ?? false,
             solo: base?.solo ?? false,
             sections: base?.sections || SECTIONS.map((s) => s.name),
             minPitch: base?.minPitch ?? 40,
             maxPitch: base?.maxPitch ?? 84,
+            noteCount: base?.noteCount,
           } as MixTrack
         })
-        if (merged.length > 0) setTracks(merged)
+        setTracks(merged)
       })
       .catch((e) => console.error('loadTracks failed:', e))
   }, [currentProject])
