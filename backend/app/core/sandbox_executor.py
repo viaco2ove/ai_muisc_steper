@@ -61,7 +61,7 @@ class SandboxExecutor:
         script_path = script_path.resolve()
 
         # 1. args → 临时 JSON 文件 (与 wrapper 同目录, 保证相对路径能找到)
-        tmp_dir = tempfile.mkdtemp(prefix='sandbox/panel_sandbox_', dir='.')
+        tmp_dir = tempfile.mkdtemp(prefix='panel_sandbox_', dir='./sandbox')
         args_basename = 'args.json'
         args_path = os.path.join(tmp_dir, args_basename)
         with open(args_path, 'w', encoding='utf-8') as f:
