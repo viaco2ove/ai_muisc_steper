@@ -41,6 +41,15 @@ export const useUiStore = create<UiState>()(
       chatCollapsed: false,
       setChatCollapsed: (v) => set({ chatCollapsed: v }),
     }),
-    { name: 'ai-music-ui' },
+    {
+      name: 'ai-music-ui',
+      partialize: (state) => ({
+        activeTab: state.activeTab,
+        selectedTrackId: state.selectedTrackId,
+        splitRatio: state.splitRatio,
+        dirtyTracks: state.dirtyTracks,
+        // 不持久化 chatCollapsed，避免旧值残留导致 AI 助手消失
+      }),
+    },
   ),
 )

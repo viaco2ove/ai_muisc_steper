@@ -5,7 +5,7 @@ import { useToast } from '../common/Toast'
 interface BasicInfoProps {
   projectName?: string
   bpm?: string | number
-  key?: string
+  keySig?: string  // 'key' is reserved prop, use 'keySig'
   style?: string
   mood?: string
   time_signature?: string
@@ -89,7 +89,7 @@ const STYLE_OPTIONS = ['流行', '摇滚', '民谣', '电子', '爵士', '古典
 const TIME_SIG_OPTIONS = ['4/4', '3/4', '6/8', '2/4', '5/4', '7/8', '12/8']
 const MOOD_OPTIONS = ['欢快', '忧伤', '平静', '激烈', '浪漫', '神秘', '怀旧', '力量', '梦幻', '焦虑']
 
-export default function BasicInfo({ projectName, bpm, key, style, mood, time_signature, language }: BasicInfoProps) {
+export default function BasicInfo({ projectName, bpm, keySig, style, mood, time_signature, language }: BasicInfoProps) {
   const toast = useToast()
   const [editingBpm, setEditingBpm] = useState(false)
   const [editingKey, setEditingKey] = useState(false)
@@ -99,7 +99,7 @@ export default function BasicInfo({ projectName, bpm, key, style, mood, time_sig
   const [editingLang, setEditingLang] = useState(false)
 
   const [editBpm, setEditBpm] = useState(String(bpm || ''))
-  const [editKey, setEditKey] = useState(key || '')
+  const [editKey, setEditKey] = useState(keySig || '')
   const [editStyle, setEditStyle] = useState(style || '')
   const [editMood, setEditMood] = useState(mood || '')
   const [editTimeSig, setEditTimeSig] = useState(time_signature || '4/4')
@@ -142,14 +142,14 @@ export default function BasicInfo({ projectName, bpm, key, style, mood, time_sig
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm group">
         <EditableField
           label="调性"
-          value={key}
+          value={keySig}
           editValue={editKey}
           onChange={setEditKey}
           options={KEY_OPTIONS}
           editing={editingKey}
           setEditing={setEditingKey}
-          onSave={() => handleSave('key', editKey)}
-          onCancel={() => { setEditKey(key || ''); setEditingKey(false) }}
+          onSave={() => handleSave("key", editKey)}
+          onCancel={() => { setEditKey(keySig || ''); setEditingKey(false) }}
         />
         <EditableField
           label="BPM"

@@ -46,6 +46,9 @@ export default function WorkspacePanel() {
   const [selectedTrackInfo, setSelectedTrackInfo] = useState<TrackInfo | null>(null)
   // 新建工程对话框状态
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
+  // 三个栏目独立折叠
+  const [mixCollapsed, setMixCollapsed] = useState(false)
+  const [editorCollapsed, setEditorCollapsed] = useState(false)
 
   useEffect(() => {
     listProjects()
@@ -358,7 +361,7 @@ export default function WorkspacePanel() {
                 <BasicInfo
                   projectName={currentProject}
                   bpm={bpm}
-                  key={key}
+                  keySig={key}
                   style={style}
                   mood={mood}
                   time_signature={timeSig}
@@ -435,34 +438,78 @@ export default function WorkspacePanel() {
                   </button>
                 </div>
               </div>
-              {/* MixView/ArrangeView - 固定宽度 + 收缩 */}
-              <div className="w-[420px] shrink-0 border-r min-h-0">
-                {mixView === 'mix' ? (
-                  <MixView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
-                ) : (
-                  <ArrangeView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
-                )}
-              </div>
-              {/* 右：轨道编辑（占剩余空间 + min-w-0 防止撑大） */}
-              <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-                {selectedTrackId ? (
-                  <TrackSubView
-                    trackId={selectedTrackId}
-                    trackMd={trackMd}
-                    saveState={saveState}
-                    onSave={handleSave}
-                    currentProject={currentProject}
-                    trackInfo={selectedTrackInfo}
-                  />
-                ) : (
-                  <div className="flex-1 flex items-center justify-center text-center text-gray-400">
-                    <div>
-                      <p>点击左侧任意轨道</p>
-                      <p className="text-sm mt-1">查看混音状态并编辑其音符 / MD</p>
-                    </div>
+              {/* MixView/ArrangeView - 可折叠 */}
+              {mixCollapsed ? (
+                <button
+                  onClick={() => setMixCollapsed(false)}
+                  className="w-6 shrink-0 border-r bg-gray-100 dark:bg-gray-800 dark:border-gray-700 hover:bg-blue-100 text-xs flex items-center justify-center"
+                  title="展开混音台"
+                >
+                  ▶
+                </button>
+              ) : (
+                <div className="w-[420px] shrink-0 border-r min-h-0 flex flex-col">
+                  <div className="flex items-center justify-between px-2 py-1 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
+                    <span className="text-xs text-gray-500">{mixView === 'mix' ? '混音台' : '总览'}</span>
+                    <button
+                      onClick={() => setMixCollapsed(true)}
+                      className="text-xs text-gray-400 hover:text-gray-700"
+                      title="折叠"
+                    >
+                      �
+                    </button>
                   </div>
-                )}
-              </div>
+                  <div className="flex-1 min-h-0">
+                    {mixView === 'mix' ? (
+                      <MixView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
+                    ) : (
+                      <ArrangeView selectedId={selectedTrackId} onSelect={handleSelectMixTrack} />
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* 右侧编辑器 - 可折叠 */}
+              {editorCollapsed ? (
+                <button
+                  onClick={() => setEditorCollapsed(false)}
+                  className="w-6 shrink-0 border-l bg-gray-100 dark:bg-gray-800 dark:border-gray-700 hover:bg-blue-100 text-xs flex items-center justify-center"
+                  title="展开编辑器"
+                >
+                  ◀
+                </button>
+              ) : (
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+                  <div className="flex items-center justify-between px-2 py-1 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
+                    <span className="text-xs text-gray-500">{selectedTrackId ? '轨道编辑器' : '未选择'}</span>
+                    <button
+                      onClick={() => setEditorCollapsed(true)}
+                      className="text-xs text-gray-400 hover:text-gray-700"
+                      title="折叠"
+                    >
+                      �
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {selectedTrackId ? (
+                      <TrackSubView
+                        trackId={selectedTrackId}
+                        trackMd={trackMd}
+                        saveState={saveState}
+                        onSave={handleSave}
+                        currentProject={currentProject}
+                        trackInfo={selectedTrackInfo}
+                      />
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center text-center text-gray-400">
+                        <div>
+                          <p>点击左侧任意轨道</p>
+                          <p className="text-sm mt-1">查看混音状态并编辑其音符 / MD</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
