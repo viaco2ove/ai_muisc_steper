@@ -484,12 +484,60 @@ function TrackSubView({
   trackInfo?: TrackInfo | null
 }) {
   const [sub, setSub] = useState<'notes' | 'md' | 'lyrics' | 'singer'>('notes')
-  const track = MIX_TRACKS.find((t) => t.id === trackId) || null
-  // 优先用后端实际轨道名判断人声
-  const trackName = trackInfo?.name || track?.name || ''
-  const trackType = trackInfo?.type || track?.type || ''
-  const isSingerTrack = trackType === '人声' || trackType === '和声' ||
-                        trackName.includes('主唱') || trackName.includes('和声')
+  // 优先用后端真实轨道信息构造 fallback
+  const track = (() => {
+    const fromModel = MIX_TRACKS.find((t) => t.id === trackId)
+    if (fromModel) return fromModel
+    if (trackInfo) {
+      // 从后端数据构造 MixTrack
+      const isSinger = (trackInfo.type === '人声' || trackInfo.type === '和声') ||
+                       (trackInfo.name || '').includes('主唱') ||
+                       (trackInfo.name || '').includes('和声')
+      return {
+        id: trackInfo.id,
+        name: trackInfo.name || trackId,
+        type: (trackInfo.type || '乐器') as any,
+        role: trackInfo.role || '',
+        status: trackInfo.status || '草稿',
+        instrument: trackInfo.instrument || '',
+        museUID: '',
+        museName: '',
+        musePack: '',
+        isSinger,
+        volume: trackInfo.volume ?? 0.8,
+        pan: 0,
+        velocity: 80,
+        muted: trackInfo.muted ?? false,
+        solo: false,
+        sections: [],
+        minPitch: isSinger ? 40 : 40,
+        maxPitch: isSinger ? 84 : 84,
+      } as MixTrack
+    }
+    // 兜底
+    return {
+      id: trackId,
+      name: trackId,
+      type: '乐器' as any,
+      role: '',
+      status: '草稿',
+      instrument: '',
+      museUID: '',
+      museName: '',
+      musePack: '',
+      isSinger: false,
+      volume: 0.8,
+      pan: 0,
+      velocity: 80,
+      muted: false,
+      solo: false,
+      sections: [],
+      minPitch: 40,
+      maxPitch: 84,
+    } as MixTrack
+  })()
+  const trackName = track.name
+  const isSingerTrack = track.isSinger || trackName.includes('主唱') || trackName.includes('和声')
 
   const handleSingerSave = async (data: SingerJson) => {
     if (!currentProject) return
