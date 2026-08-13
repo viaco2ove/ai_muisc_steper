@@ -11,6 +11,8 @@ import ExportPanel from './ExportPanel'
 import MixView from './MixView'
 import ArrangeView from './ArrangeView'
 import NoteEditor from './NoteEditor'
+import SingerPanel, { type SingerJson } from './SingerPanel'
+import LyricsPanel from './LyricsPanel'
 import FileBrowser from './FileBrowser'
 import SkillPanel from './SkillPanel'
 import NewProjectDialog from './NewProjectDialog'
@@ -428,6 +430,7 @@ export default function WorkspacePanel() {
                     trackMd={trackMd}
                     saveState={saveState}
                     onSave={handleSave}
+                    currentProject={currentProject}
                   />
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-center text-gray-400">
@@ -458,24 +461,50 @@ function TrackSubView({
   trackMd,
   saveState,
   onSave,
+  currentProject,
 }: {
   trackId: string
   trackMd: string
   saveState: 'idle' | 'saving' | 'saved' | 'error'
   onSave: (md: string) => void
+  currentProject?: string | null
 }) {
-  const [sub, setSub] = useState<'notes' | 'md'>('notes')
+  const [sub, setSub] = useState<'notes' | 'md' | 'lyrics' | 'singer'>('notes')
   const track = MIX_TRACKS.find((t) => t.id === trackId) || null
+  const isSingerTrack = track?.isSinger || trackId.includes('主唱') || trackId.includes('和声')
+
+  const handleSingerSave = async (data: SingerJson) => {
+    if (!currentProject) return
+    try {
+      await fetch(`/api/project/${encodeURIComponent(currentProject)}/file?path=song_engineer/track/singer/${encodeURIComponent(trackId)}.singer.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: JSON.stringify(data, null, 2) }),
+      })
+    } catch (e) {
+      console.error('Save singer config failed:', e)
+    }
+  }
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="flex gap-2 p-2 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
+      <div className="flex gap-2 p-2 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0 flex-wrap">
         <SubTab active={sub === 'notes'} onClick={() => setSub('notes')}>
           音符卷帘
         </SubTab>
         <SubTab active={sub === 'md'} onClick={() => setSub('md')}>
           MD 编辑器
         </SubTab>
+        {isSingerTrack && (
+          <>
+            <SubTab active={sub === 'lyrics'} onClick={() => setSub('lyrics')}>
+              歌词
+            </SubTab>
+            <SubTab active={sub === 'singer'} onClick={() => setSub('singer')}>
+              🎤 歌手
+            </SubTab>
+          </>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden p-3">
         {sub === 'notes' ? (
@@ -484,8 +513,14 @@ function TrackSubView({
           ) : (
             <div className="text-gray-400 text-sm">无混音元数据，使用 MD 编辑器。</div>
           )
-        ) : (
+        ) : sub === 'md' ? (
           <TrackEditor trackId={trackId} initialMd={trackMd} onSave={onSave} saveState={saveState} />
+        ) : sub === 'lyrics' && currentProject ? (
+          <LyricsPanel projectName={currentProject} trackId={trackId} />
+        ) : sub === 'singer' && currentProject ? (
+          <SingerPanel projectName={currentProject} trackId={trackId} onSave={handleSingerSave} />
+        ) : (
+          <div className="text-gray-400 text-sm">未选择工程</div>
         )}
       </div>
     </div>

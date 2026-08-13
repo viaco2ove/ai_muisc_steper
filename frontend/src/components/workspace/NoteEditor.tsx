@@ -288,11 +288,33 @@ export default function NoteEditor({ track }: NoteEditorProps) {
       <div className="border rounded-lg p-3 bg-gray-50 text-sm shrink-0 overflow-y-auto dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200" style={{ maxHeight: 240 }}>
         <div className="flex items-center justify-between mb-2">
           <span className="font-medium text-gray-700">音符检查器</span>
-          {selected && (
-            <button onClick={splitSelected} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 dark:bg-gray-700 dark:text-indigo-300 dark:hover:bg-gray-600">
-              中点分段
-            </button>
-          )}
+          <div className="flex gap-1">
+            {selected && (
+              <>
+                <button onClick={splitSelected} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 dark:bg-gray-700 dark:text-indigo-300 dark:hover:bg-gray-600">
+                  中点分段
+                </button>
+                <button
+                  onClick={async () => {
+                    const instruction = prompt('AI 修改指令:', '让这个音符更有表现力')
+                    if (instruction) {
+                      const { aiModifyNote } = await import('./aiNoteHelper')
+                      aiModifyNote({
+                        trackId: track.id,
+                        noteId: selected.id,
+                        note: selected,
+                        instruction,
+                      })
+                    }
+                  }}
+                  className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 dark:bg-gray-700 dark:text-purple-300 dark:hover:bg-gray-600"
+                  title="AI 修改此音符"
+                >
+                  ✦ AI 修改
+                </button>
+              </>
+            )}
+          </div>
         </div>
         {!selected && <div className="text-gray-400 text-xs">在卷帘中点击一个音符进行编辑</div>}
         {selected && (

@@ -16,6 +16,9 @@ interface UiState {
   // P4-3: 左聊天 / 右工作区分栏比例（百分比，持久化）
   splitRatio: number
   setSplitRatio: (r: number) => void
+  // 聊天面板是否折叠（点击工具栏可恢复）
+  chatCollapsed: boolean
+  setChatCollapsed: (v: boolean) => void
 }
 
 export const useUiStore = create<UiState>()(
@@ -35,6 +38,8 @@ export const useUiStore = create<UiState>()(
         }),
       splitRatio: 40,
       setSplitRatio: (r) => set({ splitRatio: Math.max(20, Math.min(80, r)) }),
+      chatCollapsed: false,
+      setChatCollapsed: (v) => set({ chatCollapsed: v }),
     }),
     { name: 'ai-music-ui' },
   ),

@@ -24,6 +24,8 @@ export default function App() {
   const { currentProject, wsStatus } = useProjectStore()
   const splitRatio = useUiStore((s) => s.splitRatio)
   const setSplitRatio = useUiStore((s) => s.setSplitRatio)
+  const chatCollapsed = useUiStore((s) => s.chatCollapsed)
+  const setChatCollapsed = useUiStore((s) => s.setChatCollapsed)
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
   const [showHelp, setShowHelp] = useState(false)
@@ -86,6 +88,13 @@ export default function App() {
                   {THEME_ICON[theme]}
                 </button>
                 <button
+                  onClick={() => setChatCollapsed(!chatCollapsed)}
+                  title={chatCollapsed ? '展开 AI 助手' : '折叠 AI 助手'}
+                  className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm"
+                >
+                  {chatCollapsed ? '💬 展开' : '💬 折叠'}
+                </button>
+                <button
                   onClick={() => setShowHelp((v) => !v)}
                   title="快捷键帮助（?）"
                   className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm"
@@ -97,20 +106,24 @@ export default function App() {
 
             {/* Main content: 可拖拽分栏，左聊天 / 右工作区 */}
             <main id="main-split" className="flex-1 flex min-h-0">
-              <div
-                className="border-r min-h-0 dark:border-gray-700 overflow-hidden"
-                style={{ width: `${splitRatio}%` }}
-              >
-                <ErrorBoundary level="panel" name="对话区">
-                  <ChatPanel />
-                </ErrorBoundary>
-              </div>
-              {/* 拖拽分隔条 */}
-              <div
-                onMouseDown={onDragStart}
-                title="拖拽调整分栏"
-                className="w-1.5 cursor-col-resize bg-gray-200 hover:bg-indigo-400 dark:bg-gray-700 dark:hover:bg-indigo-500 shrink-0 transition-colors"
-              />
+              {!chatCollapsed && (
+                <>
+                  <div
+                    className="border-r min-h-0 dark:border-gray-700 overflow-hidden"
+                    style={{ width: `${splitRatio}%` }}
+                  >
+                    <ErrorBoundary level="panel" name="对话区">
+                      <ChatPanel />
+                    </ErrorBoundary>
+                  </div>
+                  {/* 拖拽分隔条 */}
+                  <div
+                    onMouseDown={onDragStart}
+                    title="拖拽调整分栏"
+                    className="w-1.5 cursor-col-resize bg-gray-200 hover:bg-indigo-400 dark:bg-gray-700 dark:hover:bg-indigo-500 shrink-0 transition-colors"
+                  />
+                </>
+              )}
               <div className="flex-1 min-h-0">
                 <ErrorBoundary level="panel" name="工作区">
                   <WorkspacePanel />

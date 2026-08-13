@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import {
   MIX_TRACKS,
   SECTIONS,
@@ -10,7 +10,7 @@ import {
   type MixTrack,
 } from '../../utils/trackModel'
 import AudioPlayer from '../audio/AudioPlayer'
-import { fileUrl } from '../../services/api'
+import { fileUrl, listTracks, type TrackInfo } from '../../services/api'
 import { useProjectStore } from '../../store/projectStore'
 
 interface MixViewProps {
@@ -41,11 +41,40 @@ function VolSlider({
 export default function MixView({ selectedId, onSelect }: MixViewProps) {
   const [tracks, setTracks] = useState<MixTrack[]>(MIX_TRACKS)
   const [master, setMaster] = useState(0.85)
+  const { currentProject } = useProjectStore()
+
+  // 从后端加载工程实际轨道（新建/删除实时同步）
+  useEffect(() => {
+    if (!currentProject) return
+    listTracks(currentProject)
+      .then((apiTracks: TrackInfo[]) => {
+        // 合并硬编码模型与后端轨道
+        const merged: MixTrack[] = apiTracks.map((t) => {
+          const base = MIX_TRACKS.find((m) => m.id === t.id || m.id === t.name)
+          return {
+            ...base,
+            id: t.id,
+            name: t.name,
+            role: t.role || base?.role || '',
+            status: t.status || base?.status || '草稿',
+            type: (t.type || base?.type || '乐器') as any,
+            instrument: t.instrument || base?.instrument || '',
+            volume: t.volume ?? base?.volume ?? 0.8,
+            muted: t.muted ?? false,
+            solo: base?.solo ?? false,
+            sections: base?.sections || SECTIONS.map((s) => s.name),
+            minPitch: base?.minPitch ?? 40,
+            maxPitch: base?.maxPitch ?? 84,
+          } as MixTrack
+        })
+        if (merged.length > 0) setTracks(merged)
+      })
+      .catch((e) => console.error('loadTracks failed:', e))
+  }, [currentProject])
   // P6-3/P6-5: 试听状态
   const [previewTrack, setPreviewTrack] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [playingTracks, setPlayingTracks] = useState<Set<string>>(new Set())  // 正在播放的轨道
-  const { currentProject } = useProjectStore()
 
   // P6-3: 试听单轨 WAV
   const handlePreview = useCallback((track: MixTrack) => {
@@ -267,7 +296,22 @@ export default function MixView({ selectedId, onSelect }: MixViewProps) {
 
       {/* P6-3: 试听播放器 */}
       {previewSrc && (
-        <div className="shrink-0 border-t bg-white p-2">
+        <div className="shrink-0 border-t bg-white p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs text-gray-500">试听：</span>
+            <span className="text-xs font-medium text-blue-600">
+              {tracks.find((t) => t.id === previewTrack)?.name || previewTrack}
+            </span>
+            <button
+              onClick={() => {
+                setPreviewSrc(null)
+                setPreviewTrack(null)
+              }}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+            >
+              ✕ 关闭
+            </button>
+          </div>
           <AudioPlayer src={previewSrc} className="bg-gray-50" />
         </div>
       )}
