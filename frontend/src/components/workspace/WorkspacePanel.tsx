@@ -40,6 +40,10 @@ export default function WorkspacePanel() {
   const [trackMd, setTrackMd] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [mixView, setMixView] = useState<'mix' | 'arrange'>('mix')
+  // 混音台宽度（可拖拽）
+  const [mixWidth, setMixWidth] = useState(420)
+  const [editorWidth, setEditorWidth] = useState(0) // 0 = flex-1
+  const [dragging, setDragging] = useState<'mix' | 'editor' | null>(null)
   // 轨道排序状态（存储轨道ID顺序）
   const [trackOrder, setTrackOrder] = useState<string[]>(MIX_TRACKS.map((t) => t.id))
   // 当前选中轨道的后端元数据
@@ -256,6 +260,30 @@ export default function WorkspacePanel() {
     [currentProject, selectedTrackId, trackOrder, toast],
   )
 
+  // 拖拽调整宽度
+  useEffect(() => {
+    if (!dragging) return
+    const onMove = (e: MouseEvent) => {
+      const container = document.getElementById('tracks-split')
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      if (dragging === 'mix') {
+        const w = Math.max(240, Math.min(720, e.clientX - rect.left))
+        setMixWidth(w)
+      } else if (dragging === 'editor') {
+        const w = Math.max(240, Math.min(rect.width - mixWidth - 300, rect.right - e.clientX))
+        setEditorWidth(w)
+      }
+    }
+    const onUp = () => setDragging(null)
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [dragging, mixWidth])
+
   // 数据提取
   const sections: Section[] = projectData?.sections || []
   const basic = (projectData as any)?.basic || (projectData as any)?.meta || {}
@@ -414,7 +442,7 @@ export default function WorkspacePanel() {
               </span>
             </div>
             {/* 左：分轨混音 / 总览 切换 */}
-            <div className="flex-1 flex min-h-0">
+            <div id="tracks-split" className="flex-1 flex min-h-0">
               {/* 视图切换 */}
               <div className="flex flex-col">
                 <div className="flex flex-col gap-1 p-2 border-r bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
@@ -448,7 +476,7 @@ export default function WorkspacePanel() {
                   ▶
                 </button>
               ) : (
-                <div className="w-[420px] shrink-0 border-r min-h-0 flex flex-col">
+                <div className="shrink-0 border-r min-h-0 flex flex-col" style={{ width: mixWidth }}>
                   <div className="flex items-center justify-between px-2 py-1 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
                     <span className="text-xs text-gray-500">{mixView === 'mix' ? '混音台' : '总览'}</span>
                     <button
@@ -468,7 +496,23 @@ export default function WorkspacePanel() {
                   </div>
                 </div>
               )}
+              {/* 混音台拖拽手柄 */}
+              {!mixCollapsed && (
+                <div
+                  onMouseDown={() => setDragging('mix')}
+                  className="w-1.5 shrink-0 cursor-col-resize bg-gray-200 hover:bg-indigo-400 dark:bg-gray-700 dark:hover:bg-indigo-500 transition-colors"
+                  title="拖拽调整混音台宽度"
+                />
+              )}
               {/* 右侧编辑器 - 可折叠 */}
+              {/* 编辑器拖拽手柄 */}
+              {!editorCollapsed && (
+                <div
+                  onMouseDown={() => setDragging('editor')}
+                  className="w-1.5 shrink-0 cursor-col-resize bg-gray-200 hover:bg-indigo-400 dark:bg-gray-700 dark:hover:bg-indigo-500 transition-colors"
+                  title="拖拽调整编辑器宽度"
+                />
+              )}
               {editorCollapsed ? (
                 <button
                   onClick={() => setEditorCollapsed(false)}
@@ -478,7 +522,14 @@ export default function WorkspacePanel() {
                   ◀
                 </button>
               ) : (
-                <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+                <div
+                  className="flex flex-col min-h-0"
+                  style={{
+                    width: editorWidth > 0 ? editorWidth : undefined,
+                    flex: editorWidth === 0 ? 1 : undefined,
+                    minWidth: 0,
+                  }}
+                >
                   <div className="flex items-center justify-between px-2 py-1 border-b bg-gray-50 dark:bg-gray-800 dark:border-gray-700 shrink-0">
                     <span className="text-xs text-gray-500">{selectedTrackId ? '轨道编辑器' : '未选择'}</span>
                     <button
